@@ -1,4 +1,4 @@
-import { SignupButton } from "../auth/signup/signup-button";
+import { AuthButtons } from "../auth/signup/signup-button";
 import { ThemeToggle } from "../themeToggle/themeToggle";
 import { HeroButtons } from "./hero-buttons";
 import { TypingText } from "./typing-text";
@@ -8,8 +8,7 @@ export function Hero() {
         <section className="min-h-screen">
             <div className="flex w-full justify-between">
                 <ThemeToggle />
-                <SignupButton path="/signup"> Criar conta </SignupButton>
-                <SignupButton path="/login"> Entrar </SignupButton>
+                <AuthButtons/>
             </div>
             <div className="mx-auto flex min-h-screen max-w-7x1 flex-col items-center justify-center">
                 <h1 className="text-7xl font-bold">Engineering Playground</h1>
