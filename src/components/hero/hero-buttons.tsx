@@ -1,9 +1,10 @@
+import Link from "next/link"
 import { Button } from "../ui/button"
 
-export function HeroButtons(){
+export function HeroButtons() {
     return (
         <>
-            <Button>Explore Labs</Button>
+            <Link href="/home"><Button>Explore Labs</Button></Link>
             <Button>Github</Button>
         </>
     )
