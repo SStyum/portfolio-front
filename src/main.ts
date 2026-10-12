@@ -158,6 +158,7 @@ function start() {
     if (!input.isTouch) renderer.domElement.requestPointerLock?.()
     setTimeout(() => hud.showBanner('Vila do Portfólio', 'Bem-vindo, viajante'), 700)
   })
+  if (new URLSearchParams(location.search).has('play')) startBtn.click()
 
   const discovered = new Set<string>()
   const clock = new THREE.Clock()

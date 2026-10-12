@@ -6,6 +6,7 @@ export function HeroButtons() {
         <>
             <Link href="/home"><Button>Explore Labs</Button></Link>
             <Button>Github</Button>
+            <a href="/mundo?play=1"><Button>Jogar</Button></a>
         </>
     )
 }

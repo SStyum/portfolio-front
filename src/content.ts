@@ -1,7 +1,7 @@
 // Conteúdo estático do portfólio. Edite aqui seus dados, projetos e links.
 
 export const profile = {
-  name: 'Guilherme Rocha',
+  name: 'Eric Romero',
   role: 'Desenvolvedor Back-end',
   // TODO: escreva sua bio
   bio: [
