@@ -7,7 +7,7 @@ import { createForest, type ForestTree } from '../props'
 export interface StreetProps {
   group: THREE.Group
   // onde ficam as luminárias (pra luz de verdade nos postes mais próximos do jogador)
-  lights: THREE.Vector3[]
+  lights: THREE.Vector4[]
   update(night: number): void
 }
 
@@ -70,7 +70,7 @@ export function createStreetProps(colliders: Colliders, rand: () => number): Str
 
   const lampPoles: THREE.Matrix4[] = []
   const lampHeads: THREE.Matrix4[] = []
-  const lights: THREE.Vector3[] = []
+  const lights: THREE.Vector4[] = []
   const pools: THREE.Matrix4[] = []
   const utility: THREE.Matrix4[] = []
   const vending: THREE.Matrix4[] = []
@@ -101,7 +101,7 @@ export function createStreetProps(colliders: Colliders, rand: () => number): Str
           const hx = x - Math.cos(yaw) * 1.6
           const hz = z + Math.sin(yaw) * 1.6
           lampHeads.push(at(hx, CURB + 6.6, hz, yaw))
-          lights.push(new THREE.Vector3(hx, CURB + 6.3, hz))
+          lights.push(new THREE.Vector4(hx, CURB + 6.3, hz, 70)) // poste de rua: alto e forte
           pools.push(at(hx, 0.02, hz, 0, 1))
           colliders.circle(x, z, 0.18, 7, 0)
         }
@@ -248,11 +248,40 @@ export function createStreetProps(colliders: Colliders, rand: () => number): Str
     depthWrite: false,
     blending: THREE.AdditiveBlending,
   })
-  const poolGeo = new THREE.PlaneGeometry(9, 9).rotateX(-Math.PI / 2)
+  const poolGeo = new THREE.PlaneGeometry(13, 13).rotateX(-Math.PI / 2)
   const poolMesh = instanced(poolGeo, poolMat, pools, false)
   poolMesh.receiveShadow = false
   poolMesh.renderOrder = 2
   group.add(poolMesh)
+
+  // feixe de luz visível: cone suave descendo de cada luminária até o chão
+  const coneH = CURB + 6.5
+  const coneGeo = new THREE.CylinderGeometry(0.18, 2.6, coneH, 20, 1, true).translate(0, -coneH / 2, 0)
+  const coneMat = new THREE.ShaderMaterial({
+    transparent: true,
+    depthWrite: false,
+    blending: THREE.AdditiveBlending,
+    side: THREE.DoubleSide,
+    uniforms: { uStrength: { value: 0 }, uColor: { value: new THREE.Color(0xffd29a) } },
+    vertexShader: `varying float vY; varying float vFacing;
+      void main() {
+        vY = uv.y;
+        vec4 mv = modelViewMatrix * instanceMatrix * vec4(position, 1.0);
+        vec3 n = normalize(normalMatrix * mat3(instanceMatrix) * normal);
+        vFacing = abs(dot(n, normalize(-mv.xyz)));
+        gl_Position = projectionMatrix * mv;
+      }`,
+    fragmentShader: `uniform float uStrength; uniform vec3 uColor; varying float vY; varying float vFacing;
+      void main() {
+        // forte perto da lâmpada, some no chão; mais denso no meio do cone que nas bordas
+        float a = pow(vY, 1.6) * pow(vFacing, 2.0) * uStrength;
+        gl_FragColor = vec4(uColor * a, a);
+      }`,
+  })
+  const cones = instanced(coneGeo, coneMat, lampHeads.map((m) => m.clone().multiply(new THREE.Matrix4().makeTranslation(0, -0.05, 0))), false)
+  cones.receiveShadow = false
+  cones.renderOrder = 3
+  group.add(cones)
 
   const utilityGeo = mergeGeometries([
     new THREE.CylinderGeometry(0.14, 0.2, 10, 8).translate(0, 5, 0),
@@ -305,8 +334,9 @@ export function createStreetProps(colliders: Colliders, rand: () => number): Str
     group,
     lights,
     update(night) {
-      headMat.emissiveIntensity = 0.1 + night * 1.6
-      poolMat.opacity = night * 0.32
+      headMat.emissiveIntensity = 0.1 + night * 2.2
+      poolMat.opacity = night * 0.55
+      coneMat.uniforms.uStrength.value = night * 0.16
       for (const m of vendMats) if (m.emissiveMap) m.emissiveIntensity = 0.2 + night * 0.7
     },
   }

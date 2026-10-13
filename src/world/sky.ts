@@ -136,7 +136,7 @@ export class DayNight {
     // (as cores da luz são sRGB: escuras demais somem; paredes verticais recebem metade de céu e metade de chão)
     this.hemi.color.set(0xbcd7ff).lerp(new THREE.Color(0x7385bd), this.night)
     this.hemi.groundColor.set(0x5b5048).lerp(new THREE.Color(0x544c64), this.night)
-    this.hemi.intensity = lerp(0.7, 1.5, this.night)
+    this.hemi.intensity = lerp(0.7, 2.1, this.night)
 
     // névoa da cor do horizonte: azul de dia, laranja no pôr do sol, azul-marinho à noite
     const fogDay = new THREE.Color(0xc3d3e3)
@@ -154,7 +154,7 @@ export class DayNight {
     this.glow.position.copy(focus).setY(0)
     this.sky.position.copy(focus).setY(0)
 
-    this.renderer.toneMappingExposure = lerp(0.68, 1.25, this.night)
+    this.renderer.toneMappingExposure = lerp(0.68, 1.45, this.night)
     this.scene.environmentIntensity = lerp(0.7, 0.5, this.night)
 
     // reflexos: refaz o mapa de ambiente quando o céu muda o bastante

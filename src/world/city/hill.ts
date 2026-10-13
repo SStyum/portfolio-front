@@ -13,7 +13,7 @@ const TUNNEL_H = 6.5
 
 export interface Hill {
   group: THREE.Group
-  lights: THREE.Vector3[]
+  lights: THREE.Vector4[]
   update(night: number): void
 }
 
@@ -65,7 +65,7 @@ export function createHill(colliders: Colliders): Hill {
   // ---------- escadarias ----------
   const steps = new GeoBuilder()
   const rail: THREE.Matrix4[] = []
-  const lights: THREE.Vector3[] = []
+  const lights: THREE.Vector4[] = []
   const lampPos: THREE.Matrix4[] = []
   for (const s of STAIRS) {
     const w = s.x1 - s.x0
@@ -105,7 +105,7 @@ export function createHill(colliders: Colliders): Hill {
       // luminária pequena na mureta (acende à noite)
       if (i % 12 === 0) {
         lampPos.push(new THREE.Matrix4().makeTranslation(s.x0 + 0.08, y + 2.2, z), new THREE.Matrix4().makeTranslation(s.x1 - 0.08, y + 2.2, z))
-        lights.push(new THREE.Vector3(cx, y + 2.1, z))
+        lights.push(new THREE.Vector4(cx, y + 2.3, z, 12)) // luminária baixa da escada: fraca, perto das paredes
       }
     }
     // o corrimão também segura o jogador (não dá pra atravessar pelo meio)

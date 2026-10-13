@@ -151,12 +151,14 @@ function start() {
   const startBtn = title.querySelector<HTMLButtonElement>('.start')!
   startBtn.disabled = false
   startBtn.textContent = 'Começar'
-  startBtn.addEventListener('click', () => {
+  startBtn.addEventListener('click', (e) => {
     started = true
     title.classList.add('gone')
     setTimeout(() => title.remove(), 900)
     document.body.classList.add('playing')
-    if (!input.isTouch) renderer.domElement.requestPointerLock?.()
+    // só um clique de verdade pode travar o cursor (com ?play=1 o clique é simulado e o navegador recusa);
+    // nesse caso o cursor trava no primeiro clique na tela
+    if (!input.isTouch && e.isTrusted) Promise.resolve(renderer.domElement.requestPointerLock?.()).catch(() => {})
     setTimeout(() => hud.showBanner('Shibuya', 'Bem-vindo a Tóquio'), 700)
   })
   const params = new URLSearchParams(location.search)
