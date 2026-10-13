@@ -6,6 +6,8 @@ import { createForest, type ForestTree } from '../props'
 
 export interface StreetProps {
   group: THREE.Group
+  // onde ficam as luminárias (pra luz de verdade nos postes mais próximos do jogador)
+  lights: THREE.Vector3[]
   update(night: number): void
 }
 
@@ -68,6 +70,7 @@ export function createStreetProps(colliders: Colliders, rand: () => number): Str
 
   const lampPoles: THREE.Matrix4[] = []
   const lampHeads: THREE.Matrix4[] = []
+  const lights: THREE.Vector3[] = []
   const pools: THREE.Matrix4[] = []
   const utility: THREE.Matrix4[] = []
   const vending: THREE.Matrix4[] = []
@@ -98,6 +101,7 @@ export function createStreetProps(colliders: Colliders, rand: () => number): Str
           const hx = x - Math.cos(yaw) * 1.6
           const hz = z + Math.sin(yaw) * 1.6
           lampHeads.push(at(hx, CURB + 6.6, hz, yaw))
+          lights.push(new THREE.Vector3(hx, CURB + 6.3, hz))
           pools.push(at(hx, 0.02, hz, 0, 1))
           colliders.circle(x, z, 0.18, 7, 0)
         }
@@ -299,9 +303,10 @@ export function createStreetProps(colliders: Colliders, rand: () => number): Str
 
   return {
     group,
+    lights,
     update(night) {
-      headMat.emissiveIntensity = 0.1 + night * 2.5
-      poolMat.opacity = night * 0.4
+      headMat.emissiveIntensity = 0.1 + night * 1.6
+      poolMat.opacity = night * 0.32
       for (const m of vendMats) if (m.emissiveMap) m.emissiveIntensity = 0.2 + night * 0.7
     },
   }

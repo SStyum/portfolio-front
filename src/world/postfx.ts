@@ -44,8 +44,8 @@ export function createPostFX(renderer: THREE.WebGLRenderer, scene: THREE.Scene, 
       composer.render()
     },
     setNight(night: number) {
-      bloom.strength = 0.1 + night * 0.45
-      bloom.threshold = THREE.MathUtils.lerp(3, 1.15, night)
+      bloom.strength = 0.1 + night * 0.28
+      bloom.threshold = THREE.MathUtils.lerp(3, 1.5, night)
     },
     setSize(w: number, h: number) {
       composer.setPixelRatio(renderer.getPixelRatio())

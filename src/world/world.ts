@@ -10,6 +10,7 @@ import { DayNight } from './sky'
 import { createGround, heightAt } from './terrain'
 import { createHill, gableGeometry } from './city/hill'
 import { createNeonTubes } from './city/signs'
+import { LampLights } from './city/lamplights'
 
 export interface SectorRuntime {
   def: SectorDef
@@ -61,6 +62,14 @@ export function buildWorld(scene: THREE.Scene, renderer: THREE.WebGLRenderer): W
   scene.add(street.group)
   const signs = createSigns(buildings.signs, rand)
   scene.add(signs.group)
+  const lamps = new LampLights(scene, [...street.lights, ...hill.lights])
+  // o neon da casa inicial pinta a rua de cima e o alto das escadas
+  const house = SECTORS.find((s) => s.id === 'sobre')!
+  const neonPink = new THREE.PointLight(0xff3fa4, 0, 16, 2)
+  neonPink.position.set(house.x, HILL.h + 3.4, house.z - house.d / 2 - 1.6) // frente da casa, pra rua de cima
+  const neonCyan = new THREE.PointLight(0x29e7ff, 0, 12, 2)
+  neonCyan.position.set(house.x - house.w / 2 - 1.2, HILL.h + 4, house.z + house.d / 2 - 1.2)
+  scene.add(neonPink, neonCyan)
   const traffic = createTraffic(rand)
   scene.add(traffic.group)
   const cuttables = new Cuttables(colliders, rand)
@@ -162,6 +171,9 @@ export function buildWorld(scene: THREE.Scene, renderer: THREE.WebGLRenderer): W
       cuttables.update(dt)
       cuttables.setNight(night)
       hill.update(night)
+      lamps.update(dt, player, night)
+      neonPink.intensity = 4 + night * 24
+      neonCyan.intensity = 4 + night * 25
       neon.update(t, night)
       for (const s of sectors) {
         const mat = s.beam.material as THREE.ShaderMaterial

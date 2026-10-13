@@ -351,7 +351,7 @@ export function createTraffic(rand: () => number): Traffic {
         }
       })
       for (const m of [bodies, cabins, wheels, heads, tails, beams]) m.instanceMatrix.needsUpdate = true
-      headMat.emissiveIntensity = 0.3 + night * 2.2
+      headMat.emissiveIntensity = 0.3 + night * 1.5
       tailMat.emissiveIntensity = 0.4 + night * 1.5
       beamMat.opacity = night * 0.25
 

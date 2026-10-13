@@ -53,10 +53,10 @@ export function facadeMaterial(texture: string, tile = 4, tint = 0xffffff): THRE
         attribute float aSeed;
         attribute vec3 aStyle;
         varying vec2 vUvM;
-        varying float vSeed;
-        varying vec3 vStyle;`,
+        flat varying float vSeed;
+        flat varying vec3 vStyle;`,
       )
-      .replace('#include <uv_vertex>', `#include <uv_vertex>\n vUvM = uv; vSeed = aSeed; vStyle = aStyle;`)
+      .replace('#include <uv_vertex>', `#include <uv_vertex>\n vUvM = uv; vSeed = fract(aSeed) * 97.0; vStyle = aStyle; // semente pequena: hash com número grande perde precisão`)
     shader.fragmentShader = shader.fragmentShader
       .replace(
         '#include <common>',
@@ -64,8 +64,8 @@ export function facadeMaterial(texture: string, tile = 4, tint = 0xffffff): THRE
         uniform float uNight;
         uniform float uTime;
         varying vec2 vUvM;
-        varying float vSeed;
-        varying vec3 vStyle;
+        flat varying float vSeed;
+        flat varying vec3 vStyle;
         ${NOISE_GLSL}`,
       )
       .replace(
@@ -73,27 +73,39 @@ export function facadeMaterial(texture: string, tile = 4, tint = 0xffffff): THRE
         `#include <map_fragment>
         float winMask = 0.0;
         float shopMask = 0.0;
-        vec2 winCell = vec2(0.0);
+        float winY = 0.5; // altura dentro da janela (0 = parapeito, 1 = teto)
         float kind = vStyle.z;
         bool house = kind > 2.5;
-        if (kind < 1.5 || house) {
-          float groundH = house ? 0.9 : 4.2;
-          if (vUvM.y > groundH) {
-            vec2 g = vec2(vUvM.x / vStyle.x, (vUvM.y - groundH) / vStyle.y);
-            winCell = floor(g);
-            vec2 l = fract(g);
-            vec2 lo = kind < 0.5 ? vec2(0.14, 0.22) : house ? vec2(0.25, 0.3) : vec2(0.03, 0.05);
-            vec2 hi = kind < 0.5 ? vec2(0.86, 0.86) : house ? vec2(0.75, 0.82) : vec2(0.97, 0.95);
-            winMask = step(lo.x, l.x) * step(l.x, hi.x) * step(lo.y, l.y) * step(l.y, hi.y);
-          } else if (!house && vUvM.y > 0.35 && vUvM.y < 3.5) {
-            // vitrine do térreo, com montantes
-            float m = fract(vUvM.x / 2.6);
-            shopMask = step(0.05, m) * step(m, 0.95);
-          }
+        bool hasWindows = kind < 1.5 || house;
+        float groundH = house ? 0.9 : 4.2;
+        // grade de janelas (calculada fora de qualquer if: derivadas precisam disso)
+        vec2 g = vec2(vUvM.x / vStyle.x, (vUvM.y - groundH) / vStyle.y);
+        vec2 fw = fwidth(g);
+        // longe: a janela ocupa poucos pixels; desenhar uma a uma vira "estática". Usa a média.
+        float winFar = smoothstep(0.12, 0.4, max(fw.x, fw.y));
+        vec2 winCell = floor(g);
+        vec2 l = fract(g);
+        vec2 lo = kind < 0.5 ? vec2(0.14, 0.22) : house ? vec2(0.25, 0.3) : vec2(0.03, 0.05);
+        vec2 hi = kind < 0.5 ? vec2(0.86, 0.86) : house ? vec2(0.75, 0.82) : vec2(0.97, 0.95);
+        // bordas suavizadas pelo tamanho do pixel (sem serrilhado)
+        vec2 aa = clamp(fw * 1.2, 0.002, 0.5);
+        vec2 edge = smoothstep(lo - aa, lo + aa, l) * (1.0 - smoothstep(hi - aa, hi + aa, l));
+        float coverage = (hi.x - lo.x) * (hi.y - lo.y);
+        float upper = smoothstep(groundH - 0.05, groundH + 0.05, vUvM.y);
+        // vitrine do térreo, com montantes (também suavizados)
+        float sx = vUvM.x / 2.6;
+        float sfw = fwidth(sx) * 1.2 + 0.002;
+        float sm = fract(sx);
+        float mull = smoothstep(0.05 - sfw, 0.05 + sfw, sm) * (1.0 - smoothstep(0.95 - sfw, 0.95 + sfw, sm));
+        float band = smoothstep(0.3, 0.4, vUvM.y) * (1.0 - smoothstep(3.45, 3.55, vUvM.y));
+        if (hasWindows) {
+          winMask = mix(edge.x * edge.y, coverage, winFar) * upper;
+          winY = clamp((l.y - lo.y) / (hi.y - lo.y), 0.0, 1.0);
+          if (!house) shopMask = mix(mull, 0.9, smoothstep(0.1, 0.35, sfw)) * band * (1.0 - upper);
         }
-        float glassVar = cityHash(winCell + vSeed * 7.13);
+        float glassVar = mix(cityHash(winCell + vSeed * 7.13), 0.5, winFar);
         vec3 glass = mix(vec3(0.035, 0.05, 0.07), vec3(0.09, 0.12, 0.15), glassVar);
-        // algumas janelas com persiana clara
+        // algumas janelas com persiana clara (só de perto)
         if (kind < 0.5 && glassVar > 0.82) glass = vec3(0.32, 0.30, 0.27);
         diffuseColor.rgb = mix(diffuseColor.rgb, glass, max(winMask, shopMask));`,
       )
@@ -108,6 +120,12 @@ export function facadeMaterial(texture: string, tile = 4, tint = 0xffffff): THRE
         metalnessFactor = mix(metalnessFactor, 0.3, max(winMask, shopMask));`,
       )
       .replace(
+        '#include <normal_fragment_maps>',
+        `#include <normal_fragment_maps>
+        // vidro é liso: sem o relevo da textura da fachada (que dava reflexo granulado)
+        normal = normalize(mix(normal, normalize(vNormal), max(winMask, shopMask)));`,
+      )
+      .replace(
         '#include <emissivemap_fragment>',
         `#include <emissivemap_fragment>
         // janelas acesas: mais à noite, trocando devagar
@@ -116,8 +134,13 @@ export function facadeMaterial(texture: string, tile = 4, tint = 0xffffff): THRE
         vec3 warm = vec3(1.0, 0.78, 0.5);
         vec3 cool = vec3(0.7, 0.85, 1.0);
         vec3 wcol = mix(warm, cool, step(0.7, cityHash(winCell + vSeed)));
-        // janela acesa: quente e suave (sem estourar a fachada inteira)
-        totalEmissiveRadiance += wcol * winMask * lit * (0.03 + 0.32 * uNight);
+        // interior: luz do teto (mais clara em cima), algumas com cortina (mais fraca e mais quente)
+        float curtain = step(0.62, cityHash(winCell * 2.7 + vSeed));
+        float interior = mix(0.5, 1.0, smoothstep(0.0, 1.0, winY)) * mix(1.0, 0.55, curtain);
+        wcol = mix(wcol, warm * vec3(1.0, 0.85, 0.7), curtain);
+        // de longe: brilho médio estável da fachada (sem piscar)
+        vec3 winLight = mix(wcol * lit * interior, mix(warm, cool, 0.3) * litP * 0.75, winFar);
+        totalEmissiveRadiance += winLight * winMask * (0.03 + 0.32 * uNight);
         totalEmissiveRadiance += vec3(1.0, 0.92, 0.8) * shopMask * (0.06 + 0.45 * uNight);`,
       )
   }

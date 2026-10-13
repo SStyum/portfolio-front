@@ -237,7 +237,7 @@ export function createSigns(slots: SignSlot[], rand: () => number): CitySigns {
   return {
     group,
     update(dt, t, night) {
-      mat.emissiveIntensity = 0.35 + night * 1.6
+      mat.emissiveIntensity = 0.35 + night * 0.85
       cityUniforms.uTime.value = t
       acc += dt
       if (acc < 1 / 15) return // telão a 15 quadros por segundo basta
@@ -245,7 +245,7 @@ export function createSigns(slots: SignSlot[], rand: () => number): CitySigns {
       for (const v of screenViews) {
         drawScreen(v.canvas, t)
         v.tex.needsUpdate = true
-        v.mat.color.setScalar(0.85 + night * 0.4)
+        v.mat.color.setScalar(0.85 + night * 0.15)
       }
     },
   }
@@ -510,7 +510,7 @@ export function createNeonTubes(tubes: NeonTube[]) {
       for (const m of mats) {
         // HDR: acima de 1 pra estourar no bloom à noite
         const pulse = 1 + Math.sin(t * 2.2 + m.phase) * 0.06
-        m.mat.color.copy(m.base).multiplyScalar((0.9 + night * 2.6) * pulse)
+        m.mat.color.copy(m.base).multiplyScalar((0.9 + night * 1.2) * pulse)
       }
     },
   }

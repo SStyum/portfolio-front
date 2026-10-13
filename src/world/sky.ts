@@ -80,10 +80,12 @@ export class DayNight {
         blending: THREE.AdditiveBlending,
         uniforms: { uStrength: { value: 0 } },
         vertexShader: `varying vec3 vDir; void main(){ vDir = normalize(position); gl_Position = projectionMatrix * modelViewMatrix * vec4(position,1.0); }`,
+        // céu noturno de cidade grande: azul-marinho no alto, alaranjado no horizonte (nunca preto puro)
         fragmentShader: `uniform float uStrength; varying vec3 vDir;
           void main(){ float h = clamp(vDir.y, 0.0, 1.0);
-            vec3 c = mix(vec3(0.55,0.32,0.38), vec3(0.08,0.07,0.2), smoothstep(0.0, 0.35, h));
-            gl_FragColor = vec4(c * (1.0 - smoothstep(0.0, 0.6, h)) * uStrength, 1.0); }`,
+            vec3 horizon = vec3(0.55, 0.32, 0.38) * (1.0 - smoothstep(0.0, 0.45, h));
+            vec3 base = mix(vec3(0.09, 0.1, 0.2), vec3(0.03, 0.045, 0.11), smoothstep(0.0, 0.8, h));
+            gl_FragColor = vec4((horizon + base) * uStrength, 1.0); }`,
       }),
     )
     scene.add(this.glow)
@@ -128,30 +130,32 @@ export class DayNight {
     const day = smoothstep(sunY, -0.02, 0.25)
     const sunColor = new THREE.Color(0xffa860).lerp(new THREE.Color(0xfff4e2), smoothstep(sunY, 0.05, 0.45))
     this.sun.color.copy(sunY > -0.02 ? sunColor : new THREE.Color(0x9db4ff))
-    this.sun.intensity = sunY > -0.02 ? 0.35 + day * 2.1 : 0.4
+    this.sun.intensity = sunY > -0.02 ? 0.35 + day * 2.1 : 1.0 // luar
 
-    this.hemi.color.set(0xbcd7ff).lerp(new THREE.Color(0x1b2443), this.night)
-    this.hemi.groundColor.set(0x5b5048).lerp(new THREE.Color(0x0b0b12), this.night)
-    this.hemi.intensity = lerp(0.7, 0.45, this.night)
+    // à noite: céu azulado de cidade grande iluminando tudo (escuro, mas dá pra enxergar)
+    // (as cores da luz são sRGB: escuras demais somem; paredes verticais recebem metade de céu e metade de chão)
+    this.hemi.color.set(0xbcd7ff).lerp(new THREE.Color(0x7385bd), this.night)
+    this.hemi.groundColor.set(0x5b5048).lerp(new THREE.Color(0x544c64), this.night)
+    this.hemi.intensity = lerp(0.7, 1.5, this.night)
 
     // névoa da cor do horizonte: azul de dia, laranja no pôr do sol, azul-marinho à noite
     const fogDay = new THREE.Color(0xc3d3e3)
     const fogDusk = new THREE.Color(0xd99a72)
-    const fogNight = new THREE.Color(0x141626)
+    const fogNight = new THREE.Color(0x262c48) // névoa clareada pelas luzes da cidade
     this.fog.color.copy(fogDay).lerp(fogDusk, twilight * (1 - this.night * 0.6)).lerp(fogNight, this.night)
-    this.fog.density = lerp(0.0028, 0.0042, this.night)
+    this.fog.density = lerp(0.0028, 0.0036, this.night)
 
     ;(this.stars.material as THREE.PointsMaterial).opacity = smoothstep(this.night, 0.6, 1) * 0.9
     this.stars.position.copy(focus).setY(0)
     const moonDir = this.sunDir.clone().negate()
     this.moon.position.copy(focus).setY(0).addScaledVector(moonDir, 440)
     ;(this.moon.material as THREE.MeshBasicMaterial).opacity = smoothstep(moonDir.y, -0.05, 0.1)
-    ;(this.glow.material as THREE.ShaderMaterial).uniforms.uStrength.value = this.night * 0.85
+    ;(this.glow.material as THREE.ShaderMaterial).uniforms.uStrength.value = this.night
     this.glow.position.copy(focus).setY(0)
     this.sky.position.copy(focus).setY(0)
 
-    this.renderer.toneMappingExposure = lerp(0.68, 0.95, this.night)
-    this.scene.environmentIntensity = lerp(0.7, 0.3, this.night)
+    this.renderer.toneMappingExposure = lerp(0.68, 1.25, this.night)
+    this.scene.environmentIntensity = lerp(0.7, 0.5, this.night)
 
     // reflexos: refaz o mapa de ambiente quando o céu muda o bastante
     if (Math.abs(this.hours - this.lastEnvHours) > 0.15) {

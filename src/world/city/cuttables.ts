@@ -383,6 +383,6 @@ export class Cuttables {
 
   // lanternas brilham à noite
   setNight(night: number) {
-    this.glowMat.emissiveIntensity = 0.15 + night * 1.2
+    this.glowMat.emissiveIntensity = 0.15 + night * 0.7
   }
 }
