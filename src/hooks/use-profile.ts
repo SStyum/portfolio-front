@@ -1,6 +1,6 @@
-import { useEffect, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import axios from "axios";
+import { useMounted } from "./use-mounted";
 
 interface User {
   id: string;
@@ -28,11 +28,9 @@ async function getProfile() {
 }
 
 export function useProfile() {
-  const [hasToken, setHasToken] = useState(false);
-
-  useEffect(() => {
-    setHasToken(!!localStorage.getItem("token"));
-  }, []);
+  // localStorage só existe no navegador: lê depois de montar
+  const mounted = useMounted();
+  const hasToken = mounted && !!localStorage.getItem("token");
 
   return useQuery({
     queryKey: ["profile"],
