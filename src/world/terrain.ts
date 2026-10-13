@@ -1,150 +1,133 @@
 import * as THREE from 'three'
-import { BUILDINGS, POND, TERRACE, VILLAGE_RADIUS, WORLD_RADIUS, distToPath, PATH_WIDTH } from './layout'
+import { asphaltMaterial, concreteMaterial, plazaMaterial, sidewalkMaterial } from './city/materials'
+import { GeoBuilder } from './city/geo'
+import { BLOCKS, CITY_EDGE, CURB, HILL, STAIR_RUN, STAIR_STEPS, STREETS, inHill, isPlaza, isRoad, stairAt, streetWidth } from './layout'
 
-// Ruído de valor 2D determinístico (sem dependências)
-function hash(x: number, z: number): number {
-  const s = Math.sin(x * 127.1 + z * 311.7) * 43758.5453
-  return s - Math.floor(s)
-}
+const STAIR_RISE = (HILL.h - CURB) / STAIR_STEPS
 
-export function noise2(x: number, z: number): number {
-  const ix = Math.floor(x)
-  const iz = Math.floor(z)
-  const fx = x - ix
-  const fz = z - iz
-  const ux = fx * fx * (3 - 2 * fx)
-  const uz = fz * fz * (3 - 2 * fz)
-  const a = hash(ix, iz)
-  const b = hash(ix + 1, iz)
-  const c = hash(ix, iz + 1)
-  const d = hash(ix + 1, iz + 1)
-  return a + (b - a) * ux + (c - a) * uz + (a - b - c + d) * ux * uz
-}
-
-export function smoothstep(e0: number, e1: number, x: number): number {
-  const t = Math.max(0, Math.min(1, (x - e0) / (e1 - e0)))
-  return t * t * (3 - 2 * t)
-}
-
-// fbm: algumas oitavas de ruído somadas (relevo com detalhe grande e pequeno)
-function fbm(x: number, z: number, octaves = 4): number {
-  let sum = 0
-  let amp = 0.5
-  let freq = 1
-  for (let i = 0; i < octaves; i++) {
-    sum += noise2(x * freq + i * 17.3, z * freq - i * 9.1) * amp
-    amp *= 0.5
-    freq *= 2.03
-  }
-  return sum
-}
-
-// 0 perto de construções, caminhos, lago e terraço; 1 em campo aberto. Só ali a vila ganha morrinhos.
-function openGround(x: number, z: number): number {
-  let near = distToPath(x, z) - 3
-  for (const b of BUILDINGS) near = Math.min(near, Math.hypot(x - b.x, z - b.z) - b.r)
-  near = Math.min(near, Math.hypot(x - POND.x, z - POND.z) - POND.r - 3)
-  near = Math.min(near, Math.abs(z - (TERRACE.zStart + TERRACE.zEnd) / 2) - 4)
-  return smoothstep(0, 10, near)
-}
-
-// Fora da vila: anel de colinas e campos ondulados, tudo andável (0 dentro da vila, 1 lá fora)
-export function wildFactor(x: number, z: number): number {
-  const wobble = (noise2(x * 0.05, z * 0.05) - 0.5) * 12
-  return smoothstep(VILLAGE_RADIUS - 8, VILLAGE_RADIUS + 25, Math.hypot(x, z) + wobble)
-}
-
-// Montanhas na borda do mundo: íngremes demais pra subir
-function mountainFactor(x: number, z: number): number {
-  const wobble = (noise2(x * 0.03, z * 0.03) - 0.5) * 24
-  return smoothstep(WORLD_RADIUS - 25, WORLD_RADIUS + 20, Math.hypot(x, z) + wobble)
-}
-
+// Altura do chão: rua no nível 0, calçadas um meio-fio acima, colina lá em cima e a escadaria degrau a degrau
 export function heightAt(x: number, z: number): number {
-  let h = TERRACE.height * smoothstep(TERRACE.zStart, TERRACE.zEnd, z)
-
-  // ondulação suave no vale
-  h += (noise2(x * 0.08, z * 0.08) - 0.5) * 0.6
-
-  const wild = wildFactor(x, z)
-
-  // morrinhos dentro da vila, só em campo aberto
-  if (wild < 1) h += (1 - wild) * openGround(x, z) * (fbm(x * 0.045, z * 0.045, 3) - 0.3) * 4.5
-
-  // lago
-  const dp = Math.hypot(x - POND.x, z - POND.z)
-  h -= POND.depth * (1 - smoothstep(POND.r * 0.35, POND.r, dp))
-
-  // colinas ao redor da vila e campos lá fora
-  if (wild > 0) h += wild * (4 + fbm(x * 0.016, z * 0.016) * 16 + (noise2(x * 0.09, z * 0.09) - 0.5) * 1.5)
-
-  // montanhas no limite
-  const m = mountainFactor(x, z)
-  if (m > 0) h += m * m * 75 + m * (noise2(x * 0.15, z * 0.15) * 5 + noise2(x * 0.5, z * 0.5) * 1.5)
-  return h
+  if (inHill(x, z)) {
+    if (stairAt(x, z)) {
+      const step = Math.min(STAIR_STEPS, Math.floor((HILL.front - z) / STAIR_RUN) + 1)
+      return CURB + step * STAIR_RISE
+    }
+    return HILL.h
+  }
+  return isRoad(x, z) ? 0 : CURB
 }
 
-export function createTerrain(): THREE.Mesh {
-  const size = WORLD_RADIUS * 2 + 90
-  const seg = 340
-  const geo = new THREE.PlaneGeometry(size, size, seg, seg)
-  geo.rotateX(-Math.PI / 2)
+const OUTER = 230 // até onde o chão vai (o horizonte fica coberto pelo skyline)
 
-  const pos = geo.attributes.position as THREE.BufferAttribute
-  const colors = new Float32Array(pos.count * 3)
+export function createGround(): THREE.Group {
+  const group = new THREE.Group()
 
-  const grass = new THREE.Color(0x7fae4e)
-  const grassDark = new THREE.Color(0x5d8c3a)
-  const meadow = new THREE.Color(0xa7b65a) // campo mais seco lá fora
-  const dirt = new THREE.Color(0xc9a46a)
-  const rock = new THREE.Color(0x8a7f74)
-  const rockDark = new THREE.Color(0x5f564f)
-  const sand = new THREE.Color(0xb9a27a)
-  const snow = new THREE.Color(0xf4f1ea)
-  const tmp = new THREE.Color()
-  const r = new THREE.Color()
+  // ---------- asfalto: um plano só, com poças no shader ----------
+  const road = new GeoBuilder()
+  road.top(0, 0, OUTER * 2, OUTER * 2, 0, 0)
+  const roadMesh = new THREE.Mesh(road.build(), asphaltMaterial())
+  roadMesh.receiveShadow = true
+  group.add(roadMesh)
 
-  // 1ª passada: altura; as normais dizem onde o terreno é íngreme
-  for (let i = 0; i < pos.count; i++) pos.setY(i, heightAt(pos.getX(i), pos.getZ(i)))
-  geo.computeVertexNormals()
-  const normals = geo.attributes.normal as THREE.BufferAttribute
+  // ---------- quarteirões: tampo de calçada + meio-fio ----------
+  const tops = new GeoBuilder()
+  const plaza = new GeoBuilder()
+  const curbs = new GeoBuilder()
+  const slab = (x0: number, x1: number, z0: number, z1: number, into: GeoBuilder) => {
+    const w = x1 - x0
+    const d = z1 - z0
+    into.top((x0 + x1) / 2, (z0 + z1) / 2, w, d, 0, CURB)
+    curbs.walls((x0 + x1) / 2, (z0 + z1) / 2, w, d, 0, 0, CURB)
+  }
+  for (const b of BLOCKS) slab(b.x0, b.x1, b.z0, b.z1, isPlaza(b) ? plaza : tops)
 
-  for (let i = 0; i < pos.count; i++) {
-    const x = pos.getX(i)
-    const y = pos.getY(i)
-    const z = pos.getZ(i)
-
-    const n = noise2(x * 0.3, z * 0.3)
-    tmp.copy(grass).lerp(grassDark, n * 0.7)
-    const wild = wildFactor(x, z)
-    if (wild > 0) tmp.lerp(meadow, wild * smoothstep(0.45, 0.75, noise2(x * 0.03, z * 0.03)) * 0.7)
-
-    const pd = distToPath(x, z)
-    if (pd < PATH_WIDTH + 0.6) {
-      tmp.lerp(dirt, 1 - smoothstep(PATH_WIDTH - 0.4, PATH_WIDTH + 0.6, pd))
-    }
-
-    const dp = Math.hypot(x - POND.x, z - POND.z)
-    if (dp < POND.r + 1) tmp.lerp(sand, 1 - smoothstep(POND.r - 1, POND.r + 1, dp))
-
-    // rocha onde é íngreme (normal deitada), neve no alto das montanhas
-    const steep = 1 - smoothstep(0.62, 0.86, normals.getY(i))
-    if (steep > 0) {
-      r.copy(rock).lerp(rockDark, noise2(x * 0.4, y * 0.6))
-      tmp.lerp(r, steep)
-    }
-    const snowLine = 52 + (noise2(x * 0.1, z * 0.1) - 0.5) * 12
-    if (y > snowLine - 6) tmp.lerp(snow, smoothstep(snowLine - 6, snowLine + 4, y) * (1 - steep * 0.5))
-
-    colors[i * 3] = tmp.r
-    colors[i * 3 + 1] = tmp.g
-    colors[i * 3 + 2] = tmp.b
+  // borda da cidade: chão alto até o horizonte, com vão nas avenidas principais (túneis dos carros)
+  const e = CITY_EDGE
+  const main = streetWidth(0) / 2
+  for (const side of [-1, 1]) {
+    const zA = side < 0 ? -OUTER : e
+    const zB = side < 0 ? -e : OUTER
+    slab(-OUTER, -main, zA, zB, tops)
+    slab(main, OUTER, zA, zB, tops)
+    const xA = side < 0 ? -OUTER : e
+    const xB = side < 0 ? -e : OUTER
+    slab(xA, xB, -e, -main, tops)
+    slab(xA, xB, main, e, tops)
   }
 
-  geo.setAttribute('color', new THREE.BufferAttribute(colors, 3))
+  const sidewalk = new THREE.Mesh(tops.build(), sidewalkMaterial())
+  sidewalk.receiveShadow = true
+  group.add(sidewalk)
+  const plazaMesh = new THREE.Mesh(plaza.build(), plazaMaterial())
+  plazaMesh.receiveShadow = true
+  group.add(plazaMesh)
+  const curbMesh = new THREE.Mesh(curbs.build(), concreteMaterial())
+  curbMesh.receiveShadow = true
+  group.add(curbMesh)
 
-  const mat = new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 0.95, flatShading: false })
-  const mesh = new THREE.Mesh(geo, mat)
+  group.add(createMarkings())
+  return group
+}
+
+// ---------- faixas pintadas ----------
+function createMarkings(): THREE.Mesh {
+  const g = new GeoBuilder()
+  const Y = 0.012
+  const rect = (x: number, z: number, w: number, d: number, rot = 0) => g.top(x, z, w, d, rot, Y)
+  const inIntersection = (along: number) => STREETS.some((c) => Math.abs(along - c) < streetWidth(c) / 2 + 4.5)
+
+  for (const c of STREETS) {
+    const w = streetWidth(c)
+    // linhas ao longo da rua (x = c corre em z; z = c corre em x)
+    for (let s = -CITY_EDGE; s < CITY_EDGE; s += 6) {
+      if (inIntersection(s) || inIntersection(s + 3)) continue
+      if (c === 0) {
+        // avenida principal: linha central contínua + divisórias de faixa tracejadas
+        rect(c, s + 3, 0.18, 6.02)
+        rect(s + 3, c, 6.02, 0.18)
+        for (const off of [-w / 4, w / 4]) {
+          rect(c + off, s + 1.5, 0.14, 3)
+          rect(s + 1.5, c + off, 3, 0.14)
+        }
+      } else {
+        rect(c, s + 1.5, 0.15, 3)
+        rect(s + 1.5, c, 3, 0.15)
+      }
+    }
+
+    // faixas de pedestre em cada cruzamento
+    for (const c2 of STREETS) {
+      const w2 = streetWidth(c2)
+      for (const side of [-1, 1]) {
+        const at = c2 + side * (w2 / 2 + 2)
+        for (let k = -w / 2 + 0.6; k < w / 2 - 0.4; k += 1.1) {
+          rect(c + k + 0.3, at, 0.6, 3)
+          rect(at, c + k + 0.3, 3, 0.6)
+        }
+        // linha de parada antes da faixa (só na mão que chega no cruzamento)
+        rect(c + (side > 0 ? -w / 4 : w / 4), c2 + side * (w2 / 2 + 4.3), w / 2 - 0.4, 0.35)
+        rect(c2 + side * (w2 / 2 + 4.3), c + (side > 0 ? w / 4 : -w / 4), 0.35, w / 2 - 0.4)
+      }
+    }
+  }
+
+  // o "scramble": duas diagonais atravessando o cruzamento central
+  const half = streetWidth(0) / 2
+  for (const rot of [Math.PI / 4, -Math.PI / 4]) {
+    const len = half * 2 * Math.SQRT2 - 3
+    for (let k = -1.6; k <= 1.6; k += 1.1) {
+      rect(Math.cos(rot) * k, -Math.sin(rot) * k, 0.6, len, rot)
+    }
+  }
+
+  const mat = new THREE.MeshStandardMaterial({
+    color: 0xe9e7df,
+    roughness: 0.65,
+    polygonOffset: true,
+    polygonOffsetFactor: -2,
+    polygonOffsetUnits: -2,
+  })
+  const mesh = new THREE.Mesh(g.build(), mat)
   mesh.receiveShadow = true
   return mesh
 }

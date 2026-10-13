@@ -936,3 +936,19 @@ a {
 .to-site:hover {
   background: rgba(18, 16, 14, 0.8);
 }
+
+/* relógio do ciclo dia/noite */
+.clock {
+  position: absolute;
+  top: 192px;
+  right: 16px;
+  width: 168px;
+  text-align: center;
+  padding: 0.3em 0;
+  border-radius: 10px;
+  background: rgba(18, 16, 14, 0.55);
+  color: var(--ink);
+  font-size: 0.9rem;
+  font-variant-numeric: tabular-nums;
+  letter-spacing: 0.08em;
+}

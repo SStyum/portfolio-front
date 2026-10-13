@@ -56,7 +56,7 @@ function StatusTerminal() {
 export function IntroSection() {
   return (
     <section id="topo" className="relative overflow-hidden pt-28 md:pt-36">
-      {/* fundo: grade + brilhos com as cores da vila */}
+      {/* fundo: grade + brilhos com as cores do jogo */}
       <div className="bg-grid pointer-events-none absolute inset-0" />
       <div className="animate-float-slow pointer-events-none absolute -top-40 right-[-10%] size-[520px] rounded-full bg-[#f2c879]/15 blur-3xl" />
       <div className="animate-float-slow pointer-events-none absolute left-[-15%] top-40 size-[420px] rounded-full bg-[#4cc9f0]/10 blur-3xl [animation-delay:-7s]" />
@@ -88,7 +88,7 @@ export function IntroSection() {
               href={GAME_HREF}
               className="inline-flex h-11 items-center gap-2 rounded-xl border bg-card/60 px-5 font-medium backdrop-blur transition-colors hover:bg-muted"
             >
-              <Gamepad2 className="size-4" /> Explorar a vila em 3D
+              <Gamepad2 className="size-4" /> Explorar Tóquio em 3D
             </a>
           </div>
         </div>

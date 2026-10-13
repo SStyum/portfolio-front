@@ -8,7 +8,7 @@ import { ProjectsSection } from "../site/projects-section";
 import { SiteFooter } from "../site/site-footer";
 import { SiteNav } from "../site/site-nav";
 
-// Modo site: o mesmo conteúdo da vila, em seções. A ordem segue SITE_SECTIONS.
+// Modo site: o mesmo conteúdo da cidade do jogo, em seções. A ordem segue SITE_SECTIONS.
 export function HomePage() {
   return (
     <>

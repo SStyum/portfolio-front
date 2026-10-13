@@ -36,7 +36,7 @@ export function CheckoutDialog({ open, onOpenChange }: { open: boolean; onOpenCh
           <span className="grid size-14 place-items-center rounded-full" style={{ background: "color-mix(in oklab, var(--status-good) 18%, transparent)" }}>
             <Check className="size-7" style={{ color: "var(--status-good)" }} />
           </span>
-          <p className="text-muted-foreground">Pagamento aprovado. O dashboard já está desbloqueado no site e na Torre de Vigia da vila.</p>
+          <p className="text-muted-foreground">Pagamento aprovado. O dashboard já está desbloqueado no site e na Torre de Vigia do jogo.</p>
           <button onClick={() => close(false)} className="h-10 w-full rounded-lg bg-primary font-medium text-primary-foreground hover:opacity-90">
             Ver o dashboard
           </button>

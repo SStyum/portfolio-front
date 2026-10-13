@@ -35,8 +35,8 @@ const sobre: Renderer = (body) => {
     ${profile.bio.map((p) => `<p>${esc(p)}</p>`).join('')}
     <h4>Habilidades</h4>
     <div class="chips">${profile.skills.map((s) => `<span class="chip">${esc(s)}</span>`).join('')}</div>
-    <h4>Pela vila</h4>
-    <p class="muted">Siga os feixes de luz: cada um marca um setor. Aperte <kbd>M</kbd> para abrir o mapa e viajar direto.</p>`
+    <h4>Pela cidade</h4>
+    <p class="muted">Siga os feixes de luz e as placas azuis: cada feixe marca um setor. Aperte <kbd>M</kbd> para abrir o mapa e viajar direto.</p>`
 }
 
 const projetos: Renderer = (body) => {
@@ -150,7 +150,7 @@ const observatorio: Renderer = (body) => {
       <li>No <code>portfolio-back</code>, suba o monitoramento: <code>docker compose up -d prometheus grafana</code></li>
       <li>Rode a API: <code>npm run start:dev</code> (porta 3333). O Prometheus raspa <code>host.docker.internal:3333/metrics</code>.</li>
       <li>Abra <a href="${esc(GRAFANA_DASHBOARD_URL)}" target="_blank" rel="noopener">o dashboard "Portfolio API"</a>. Login: <code>admin</code> / <code>admin</code> (ou acesso anônimo de leitura).</li>
-      <li>Ande pela vila e abra o blog: cada requisição aparece nos gráficos em alguns segundos.</li>
+      <li>Ande pela cidade e abra o blog: cada requisição aparece nos gráficos em alguns segundos.</li>
     </ol>`
     : `
     <div class="notice">
@@ -252,7 +252,7 @@ const api: Renderer = (body) => {
 const contato: Renderer = (body) => {
   const visible = contacts.filter((c) => c.href)
   body.innerHTML = `
-    <p>Gostou do que viu na vila? Me manda uma carta.</p>
+    <p>Gostou do que viu na cidade? Me manda uma carta.</p>
     <div class="contacts">${visible
       .map((c) => `<a class="contact" href="${esc(c.href)}" target="_blank" rel="noopener"><strong>${esc(c.label)}</strong><span>${esc(c.value)}</span></a>`)
       .join('')}</div>`
@@ -260,7 +260,7 @@ const contato: Renderer = (body) => {
 
 const ajuda: Renderer = (body) => {
   body.innerHTML = `
-    <p>Bem-vindo à vila! Cada construção com um feixe de luz é uma parte do portfólio.</p>
+    <p>Bem-vindo a Tóquio! Cada prédio com um feixe de luz é uma parte do portfólio.</p>
     <div class="controls-grid">
       <kbd>W A S D</kbd><span>andar</span>
       <kbd>Shift</kbd><span>correr</span>
@@ -274,7 +274,7 @@ const ajuda: Renderer = (body) => {
       <kbd>Esc</kbd><span>fechar janela / soltar o cursor</span>
     </div>
     <p class="muted">No celular: arraste o lado esquerdo para andar e o direito para girar a câmera.</p>
-    <p class="muted">A vila não tem muros: siga as placas ou saia pelos campos até as montanhas.</p>`
+    <p class="muted">Desça a escadaria até Shibuya, escale telhados baixos e corte o que encontrar pelo caminho.</p>`
 }
 
 export const PANELS: Record<PanelId, Renderer> = { sobre, projetos, blog, observatorio, api, contato, ajuda }

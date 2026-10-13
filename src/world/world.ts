@@ -1,35 +1,15 @@
 import * as THREE from 'three'
+import { createBuildings, mulberry32 } from './city/buildings'
+import { Cuttables } from './city/cuttables'
+import { createGuidePost, createBeam, createInfoBoard, createSigns, type SignArm } from './city/signs'
+import { createStreetProps } from './city/street'
+import { createTraffic } from './city/traffic'
 import { Colliders } from './colliders'
-import { createBeam, createHouse, createKiosk, createTower } from './buildings'
-import { EXTRA_HOUSES, POND, SECTORS, SIGNPOSTS, TERRACE, VILLAGE_RADIUS, WORLD_RADIUS, distToPath, doorPoint, type SectorDef } from './layout'
-import {
-  Petals,
-  createCloud,
-  createFlowers,
-  createForest,
-  createGate,
-  createGrass,
-  createLantern,
-  createPinwheel,
-  createRock,
-  createSignpost,
-  createSky,
-  createTree,
-  type ForestTree,
-  type SignArm,
-} from './props'
-import { createTerrain, heightAt, noise2 } from './terrain'
-
-// PRNG com semente: a vila sai igual em toda visita
-function mulberry32(seed: number) {
-  return () => {
-    seed |= 0
-    seed = (seed + 0x6d2b79f5) | 0
-    let t = Math.imul(seed ^ (seed >>> 15), 1 | seed)
-    t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t
-    return ((t ^ (t >>> 14)) >>> 0) / 4294967296
-  }
-}
+import { HELP_SIGN, HILL, SECTORS, STAIRS, STREETS, doorPoint, groundKind, streetWidth, type SectorDef } from './layout'
+import { DayNight } from './sky'
+import { createGround, heightAt } from './terrain'
+import { createHill, gableGeometry } from './city/hill'
+import { createNeonTubes } from './city/signs'
 
 export interface SectorRuntime {
   def: SectorDef
@@ -41,383 +21,154 @@ export interface SectorRuntime {
 export interface World {
   colliders: Colliders
   sectors: SectorRuntime[]
+  dayNight: DayNight
+  cuttables: Cuttables
+  // cor do mapa (minimapa e mapa grande)
+  mapColor(x: number, z: number): [number, number, number]
   update(dt: number, t: number, player: THREE.Vector3): void
 }
 
-function groundOf(x: number, z: number, w: number, d: number, rot: number): number {
-  // maior altura entre os cantos, pra construção não ficar flutuando nem enterrada
-  let h = heightAt(x, z)
-  const cos = Math.cos(rot)
-  const sin = Math.sin(rot)
-  for (const [lx, lz] of [[-w / 2, -d / 2], [w / 2, -d / 2], [-w / 2, d / 2], [w / 2, d / 2]]) {
-    h = Math.max(h, heightAt(x + lx * cos + lz * sin, z - lx * sin + lz * cos))
-  }
-  return h
-}
-
-function localToWorld(x: number, z: number, rot: number, lx: number, lz: number) {
-  return { x: x + lx * Math.cos(rot) + lz * Math.sin(rot), z: z - lx * Math.sin(rot) + lz * Math.cos(rot) }
-}
-
-export function buildWorld(scene: THREE.Scene): World {
+export function buildWorld(scene: THREE.Scene, renderer: THREE.WebGLRenderer): World {
   const rand = mulberry32(1938)
   const colliders = new Colliders()
-  const animated: ((dt: number, t: number, player: THREE.Vector3) => void)[] = []
-  const windUniforms = { uTime: { value: 0 } }
+  const dayNight = new DayNight(scene, renderer)
 
-  scene.add(createSky(0x4f9fe0, 0xf7dcb4, 0x8fa88a))
-  scene.add(createTerrain())
+  scene.add(createGround())
+  const hill = createHill(colliders)
+  scene.add(hill.group)
+  const buildings = createBuildings(colliders)
+  scene.add(buildings.group)
+  const neon = createNeonTubes(buildings.tubes)
+  scene.add(neon.group)
+  // telhados de duas águas das casinhas da colina (uma chamada de desenho)
+  const gables = new THREE.InstancedMesh(gableGeometry(), new THREE.MeshStandardMaterial({ color: 0x3b4352, roughness: 0.55, metalness: 0.2, flatShading: true }), Math.max(1, buildings.gables.length))
+  buildings.gables.forEach((m, i) => gables.setMatrixAt(i, m))
+  gables.count = buildings.gables.length
+  gables.castShadow = gables.receiveShadow = true
+  scene.add(gables)
 
-  // ---------- setores ----------
+  // ---------- setores: feixe de luz no topo ----------
   const sectors: SectorRuntime[] = SECTORS.map((def) => {
-    const y = groundOf(def.x, def.z, def.w + 1, def.d + 1, def.rot)
-    let built: { group: THREE.Group; height: number }
-
-    if (def.kind === 'tower') {
-      const tower = createTower({ w: def.w, accent: def.color, label: def.place })
-      built = tower
-      animated.push((_dt, t) => {
-        tower.orb.rotation.y = t * 0.8
-        tower.orb.position.y = tower.height - 0.4 + Math.sin(t * 2) * 0.15
-      })
-      colliders.box(def.x, def.z, def.w + 1.4, def.w + 1.4, def.rot)
-      const post = localToWorld(def.x, def.z, def.rot, def.w / 2 + 1.2, def.w / 2 + 1.4)
-      colliders.circle(post.x, post.z, 0.3)
-    } else if (def.kind === 'kiosk') {
-      built = createKiosk({ w: def.w, d: def.d, accent: def.color, label: def.place })
-      colliders.box(def.x, def.z, def.w + 0.6, def.d + 0.6, def.rot)
-      const mail = localToWorld(def.x, def.z, def.rot, def.w / 2 + 0.9, def.d / 2 - 0.2)
-      colliders.circle(mail.x, mail.z, 0.5)
-    } else {
-      built = createHouse({ w: def.w, d: def.d, accent: def.color, label: def.place, stories: def.kind === 'manor' ? 2 : 1, h: def.kind === 'manor' ? 3.6 : 3.2 })
-      colliders.box(def.x, def.z, def.w + 1, def.d + 1, def.rot)
-    }
-
-    built.group.position.set(def.x, y, def.z)
-    built.group.rotation.y = def.rot
-    scene.add(built.group)
-
+    const b = buildings.beams.find((x) => x.sector.id === def.id)!
     const beam = createBeam(def.color)
-    beam.position.set(def.x, y + built.height + 0.5, def.z)
+    beam.position.set(b.x, b.y + 0.5, b.z)
     scene.add(beam)
-
     return { def, door: doorPoint(def), beam, visited: false }
   })
 
-  animated.push((_dt, t, player) => {
-    for (const s of sectors) {
-      const mat = s.beam.material as THREE.ShaderMaterial
-      const dist = Math.hypot(player.x - s.def.x, player.z - s.def.z)
-      const near = THREE.MathUtils.smoothstep(dist, 8, 22)
-      mat.uniforms.uTime.value = t
-      mat.uniforms.uOpacity.value = near * (s.visited ? 0.45 : 1)
+  // ---------- rua ----------
+  const street = createStreetProps(colliders, rand)
+  scene.add(street.group)
+  const signs = createSigns(buildings.signs, rand)
+  scene.add(signs.group)
+  const traffic = createTraffic(rand)
+  scene.add(traffic.group)
+  const cuttables = new Cuttables(colliders, rand)
+  scene.add(cuttables.group)
+
+  // ---------- telhados: ar-condicionado e caixa d'água ----------
+  const acMats: THREE.Matrix4[] = []
+  const tankMats: THREE.Matrix4[] = []
+  const q = new THREE.Quaternion()
+  for (const r of buildings.roofs) {
+    if (r.w < 5 || r.d < 5) continue
+    const n = Math.min(6, Math.floor((r.w * r.d) / 45) + 1)
+    const cos = Math.cos(r.rot)
+    const sin = Math.sin(r.rot)
+    for (let i = 0; i < n; i++) {
+      const lx = (rand() - 0.5) * (r.w - 2.5)
+      const lz = (rand() - 0.5) * (r.d - 2.5)
+      const x = r.x + lx * cos + lz * sin
+      const z = r.z - lx * sin + lz * cos
+      q.setFromAxisAngle(new THREE.Vector3(0, 1, 0), r.rot + (rand() < 0.5 ? 0 : Math.PI / 2))
+      acMats.push(new THREE.Matrix4().compose(new THREE.Vector3(x, r.y, z), q, new THREE.Vector3(1, 1, 1)))
+      // nos telhados baixos viram obstáculo/degrau do parkour
+      if (r.low) colliders.box(x, z, 1.3, 1.3, 0, r.y + 0.9, r.y)
     }
-  })
-
-  // ---------- casas decorativas ----------
-  const accents = [0x3d5a80, 0x9c6644, 0x6d597a, 0x2a9d8f, 0xbc4749]
-  EXTRA_HOUSES.forEach((h, i) => {
-    const y = groundOf(h.x, h.z, h.w + 1, h.d + 1, h.rot)
-    const { group } = createHouse({ w: h.w, d: h.d, accent: accents[i % accents.length] })
-    group.position.set(h.x, y, h.z)
-    group.rotation.y = h.rot
-    scene.add(group)
-    colliders.box(h.x, h.z, h.w + 1, h.d + 1, h.rot)
-  })
-
-  // ---------- muro do terraço e escadaria ----------
-  const wallMat = new THREE.MeshStandardMaterial({ color: 0x8d877c, roughness: 1, flatShading: true })
-  const capMat = new THREE.MeshStandardMaterial({ color: 0x6f6a61, roughness: 1 })
-  const wallZ = (TERRACE.zStart + TERRACE.zEnd) / 2
-  const wallD = Math.abs(TERRACE.zEnd - TERRACE.zStart)
-  const wallTop = TERRACE.height + 0.35
-  const gap = TERRACE.stairHalfWidth
-  for (const side of [-1, 1]) {
-    const len = 80
-    const cx = side * (gap + len / 2)
-    // blocos de pedra em alturas levemente diferentes pra não parecer uma caixa só
-    for (let i = 0; i < len / 4; i++) {
-      const bx = side * (gap + 2 + i * 4)
-      const jitter = rand() * 0.25
-      const block = new THREE.Mesh(new THREE.BoxGeometry(4.02, wallTop + 1.5 + jitter, wallD), wallMat)
-      block.position.set(bx, (wallTop + jitter - 1.5) / 2, wallZ)
-      block.castShadow = true
-      block.receiveShadow = true
-      scene.add(block)
-    }
-    const cap = new THREE.Mesh(new THREE.BoxGeometry(len, 0.3, wallD + 0.4), capMat)
-    cap.position.set(cx, wallTop + 0.12, wallZ)
-    cap.receiveShadow = true
-    scene.add(cap)
-    colliders.box(cx, wallZ, len, wallD)
+    if (!r.low && rand() < 0.35) tankMats.push(new THREE.Matrix4().compose(new THREE.Vector3(r.x + (rand() - 0.5) * 2, r.y, r.z + (rand() - 0.5) * 2), q, new THREE.Vector3(1, 1, 1)))
   }
-  const steps = 7
-  for (let i = 0; i < steps; i++) {
-    const z = TERRACE.zStart + ((TERRACE.zEnd - TERRACE.zStart) * (i + 0.5)) / steps
-    const top = heightAt(0, z) + 0.12
-    const step = new THREE.Mesh(new THREE.BoxGeometry(gap * 2, top + 1, wallD / steps + 0.02), wallMat)
-    step.position.set(0, (top - 1) / 2, z)
-    step.receiveShadow = true
-    scene.add(step)
+  const roofMetal = new THREE.MeshStandardMaterial({ color: 0xb4b8bd, roughness: 0.45, metalness: 0.6 })
+  const ac = new THREE.InstancedMesh(new THREE.BoxGeometry(1.2, 0.9, 0.8).translate(0, 0.45, 0), roofMetal, Math.max(1, acMats.length))
+  acMats.forEach((m, i) => ac.setMatrixAt(i, m))
+  ac.count = acMats.length
+  const tankGeo = new THREE.CylinderGeometry(1.1, 1.1, 2, 16).translate(0, 2.6, 0)
+  const tank = new THREE.InstancedMesh(tankGeo, new THREE.MeshStandardMaterial({ color: 0x7f8c8d, roughness: 0.6, metalness: 0.4 }), Math.max(1, tankMats.length))
+  tankMats.forEach((m, i) => tank.setMatrixAt(i, m))
+  tank.count = tankMats.length
+  for (const m of [ac, tank]) {
+    m.castShadow = true
+    m.receiveShadow = true
+    scene.add(m)
   }
 
-  // ---------- lago ----------
-  const water = new THREE.Mesh(
-    new THREE.CircleGeometry(POND.r + 0.3, 40),
-    new THREE.MeshStandardMaterial({ color: 0x3f8fb5, roughness: 0.15, metalness: 0.1, transparent: true, opacity: 0.82 }),
-  )
-  water.rotation.x = -Math.PI / 2
-  water.position.set(POND.x, POND.water, POND.z)
-  scene.add(water)
-  const padMat = new THREE.MeshStandardMaterial({ color: 0x4f8a3c, roughness: 0.9 })
-  for (let i = 0; i < 9; i++) {
-    const a = rand() * Math.PI * 2
-    const r = rand() * (POND.r - 2)
-    const pad = new THREE.Mesh(new THREE.CylinderGeometry(0.45 + rand() * 0.3, 0.45, 0.04, 10), padMat)
-    pad.position.set(POND.x + Math.cos(a) * r, POND.water + 0.03, POND.z + Math.sin(a) * r)
-    scene.add(pad)
-  }
-  animated.push((_dt, t) => {
-    water.position.y = POND.water + Math.sin(t * 0.8) * 0.03
-  })
-
-  // ---------- portal de entrada ----------
-  const gate = createGate()
-  gate.position.set(0, heightAt(0, 63), 63)
-  scene.add(gate)
-  colliders.circle(-3.2, 63, 0.5)
-  colliders.circle(3.2, 63, 0.5)
-
-  // ---------- lanternas ----------
-  const branchZ = SECTORS.map((s) => doorPoint(s).z)
-  const placeLantern = (x: number, z: number) => {
-    const l = createLantern()
-    l.position.set(x, heightAt(x, z), z)
-    scene.add(l)
-    colliders.circle(x, z, 0.5)
-  }
-  for (let z = 56; z > -24; z -= 9) {
-    if (branchZ.some((bz) => Math.abs(bz - z) < 3.5)) continue
-    placeLantern(-3.4, z)
-    placeLantern(3.4, z)
-  }
-  placeLantern(-4.8, -33)
-  placeLantern(4.8, -33)
-  for (const s of sectors) {
-    const side = localToWorld(s.def.x, s.def.z, s.def.rot, s.def.w / 2 + 0.8, s.def.d / 2 + 1.8)
-    if (s.def.kind !== 'tower') placeLantern(side.x, side.z)
-  }
-
-  // ---------- placas de direção ----------
-  const signTo = (fromX: number, fromZ: number, s: SectorDef): SignArm => {
+  // ---------- placas de orientação (azuis) ----------
+  const signTo = (fx: number, fz: number, s: SectorDef): SignArm => {
     const d = doorPoint(s)
-    return {
-      label: s.place,
-      detail: `${Math.round(Math.hypot(d.x - fromX, d.z - fromZ))} m`,
-      yaw: Math.atan2(d.x - fromX, d.z - fromZ),
-      color: s.color,
+    return { label: s.place, detail: `${Math.round(Math.hypot(d.x - fx, d.z - fz))} m`, yaw: Math.atan2(d.x - fx, d.z - fz), color: s.color }
+  }
+  const placeGuide = (x: number, z: number, list: SectorDef[]) => {
+    if (colliders.blocked(x, z, 0.3)) return
+    const post = createGuidePost(list.map((s) => signTo(x, z, s)))
+    const y = heightAt(x, z)
+    post.position.set(x, y, z)
+    scene.add(post)
+    colliders.circle(x, z, 0.12, y + 4, y - 1)
+  }
+  // quinas dos cruzamentos da avenida principal com as ruas: os 3 setores mais próximos
+  for (const cx of STREETS) {
+    for (const cz of STREETS) {
+      if (Math.abs(cx) > 82 || Math.abs(cz) > 82) continue
+      const x = cx + streetWidth(cx) / 2 + 0.9
+      const z = cz + streetWidth(cz) / 2 + 0.9
+      const near = [...SECTORS].sort((a, b) => Math.hypot(a.x - x, a.z - z) - Math.hypot(b.x - x, b.z - z)).slice(0, 3)
+      placeGuide(x, z, near)
     }
   }
-  const placeSign = (x: number, z: number, arms: SignArm[]) => {
-    const sign = createSignpost(arms)
-    sign.position.set(x, heightAt(x, z), z)
-    scene.add(sign)
-    colliders.circle(x, z, 0.25)
-  }
-  const manor = SECTORS.find((s) => s.id === 'sobre')!
-  // entrada: todos os lugares
-  placeSign(SIGNPOSTS[0].x, SIGNPOSTS[0].z, SECTORS.map((s) => signTo(SIGNPOSTS[0].x, SIGNPOSTS[0].z, s)))
-  // terraço: casa principal e o caminho de volta pro portal
-  placeSign(SIGNPOSTS[1].x, SIGNPOSTS[1].z, [
-    signTo(SIGNPOSTS[1].x, SIGNPOSTS[1].z, manor),
-    { label: 'Portal da vila', detail: `${Math.round(63 - SIGNPOSTS[1].z)} m`, yaw: 0, color: 0xe8c88c },
-  ])
-  // cruzamentos: as ruas que saem dali + a casa principal ao norte
-  const junctions = new Map<number, SectorDef[]>()
-  for (const s of SECTORS.filter((x) => x.id !== 'sobre')) {
-    const z = doorPoint(s).z
-    const key = [...junctions.keys()].find((k) => Math.abs(k - z) < 6) ?? z
-    junctions.set(key, [...(junctions.get(key) ?? []), s])
-  }
-  for (const list of junctions.values()) {
-    const sz = Math.max(...list.map((s) => doorPoint(s).z)) + 2.4
-    placeSign(2.7, sz, [...list.map((s) => signTo(2.7, sz, s)), signTo(2.7, sz, manor)])
-  }
-  // lá fora: placas apontando de volta pra vila
-  for (let i = 0; i < 10; i++) {
-    const a = (i / 10) * Math.PI * 2 + 0.3
-    const r = VILLAGE_RADIUS + 22 + (i % 3) * 18
-    const x = Math.cos(a) * r
-    const z = Math.sin(a) * r
-    if (colliders.blocked(x, z, 1.2)) continue
-    placeSign(x, z, [
-      { label: 'Vila do Portfólio', detail: `${Math.round(r)} m`, yaw: Math.atan2(-x, -z), color: 0xe8c88c },
-    ])
-  }
+  // no alto da escada, logo ao lado do ponto de partida: todos os lugares
+  placeGuide(HELP_SIGN.x - 2, HELP_SIGN.z + 0.6, SECTORS)
 
-  // ---------- árvores ----------
-  // árvore sagrada no terraço
-  const sacred = createTree('cherry', 1.9, 0.3)
-  sacred.position.set(11, heightAt(11, -34.5), -34.5)
-  scene.add(sacred)
-  colliders.circle(11, -34.5, 0.8)
+  const help = createInfoBoard('Como jogar', 'aperte E')
+  const helpY = heightAt(HELP_SIGN.x, HELP_SIGN.z)
+  help.position.set(HELP_SIGN.x, helpY, HELP_SIGN.z)
+  help.rotation.y = -Math.PI / 2
+  scene.add(help)
+  colliders.box(HELP_SIGN.x, HELP_SIGN.z, 0.3, 1.6, 0, helpY + 2.2, helpY - 1)
 
-  const free = (x: number, z: number, pathMargin: number, colMargin: number) =>
-    Math.hypot(x, z) < VILLAGE_RADIUS - 2 &&
-    distToPath(x, z) > pathMargin &&
-    Math.hypot(x - POND.x, z - POND.z) > POND.r + 1.5 &&
-    !colliders.blocked(x, z, colMargin) &&
-    Math.abs(z - (TERRACE.zStart + TERRACE.zEnd) / 2) > 3.5
+  // pé da escadaria: placa pra cidade
+  placeGuide(STAIRS[0].x0 - 1.2, HILL.front + 2.2, SECTORS.filter((s) => s.id !== 'sobre'))
 
-  const kinds = ['cherry', 'maple', 'green', 'green', 'cherry'] as const
-  let placed = 0
-  for (let tries = 0; tries < 3000 && placed < 85; tries++) {
-    const a = rand() * Math.PI * 2
-    const r = 12 + Math.sqrt(rand()) * 56
-    const x = Math.cos(a) * r
-    const z = Math.sin(a) * r
-    if (!free(x, z, 4, 2.6)) continue
-    const tree = createTree(kinds[placed % kinds.length], 0.8 + rand() * 0.6, rand())
-    tree.position.set(x, heightAt(x, z), z)
-    scene.add(tree)
-    colliders.circle(x, z, 0.55)
-    placed++
+  const colors: Record<ReturnType<typeof groundKind>, [number, number, number]> = {
+    road: [70, 72, 78],
+    crosswalk: [200, 200, 200],
+    sidewalk: [168, 162, 152],
+    plaza: [196, 184, 166],
+    outside: [96, 96, 104],
+    hill: [150, 146, 138],
+    stairs: [205, 120, 110],
   }
-
-  // ---------- fora da vila: bosques, árvores soltas e pinheiros nas montanhas ----------
-  const forest: ForestTree[] = []
-  const wildKinds = ['green', 'green', 'maple', 'cherry', 'pine', 'pine'] as const
-  for (let tries = 0; tries < 9000 && forest.length < 700; tries++) {
-    const a = rand() * Math.PI * 2
-    const r = VILLAGE_RADIUS + 6 + rand() * (WORLD_RADIUS - VILLAGE_RADIUS - 18)
-    const x = Math.cos(a) * r
-    const z = Math.sin(a) * r
-    // bosques onde o ruído é alto, árvores soltas no resto
-    const grove = noise2(x * 0.025 + 40, z * 0.025 - 13)
-    if (rand() > (grove > 0.55 ? 0.9 : 0.07)) continue
-    if (colliders.blocked(x, z, 1.6)) continue
-    const h = heightAt(x, z)
-    const kind = h > 14 ? 'pine' : wildKinds[Math.floor(rand() * wildKinds.length)]
-    const scale = 0.8 + rand() * 0.7
-    forest.push({ x, z, kind, scale, seed: rand() })
-    colliders.circle(x, z, 0.45 * scale + 0.1)
-  }
-  // pinheiros subindo as montanhas (inalcançáveis, sem colisão)
-  for (let i = 0; i < 320; i++) {
-    const a = rand() * Math.PI * 2
-    const r = WORLD_RADIUS - 20 + rand() * 45
-    const x = Math.cos(a) * r
-    const z = Math.sin(a) * r
-    if (heightAt(x, z) > 48) continue // acima da linha das árvores
-    forest.push({ x, z, kind: 'pine', scale: 1 + rand() * 0.9, seed: rand() })
-  }
-  scene.add(createForest(forest))
-
-  // pedras perto da borda e do lago
-  for (let i = 0; i < 30; i++) {
-    const a = rand() * Math.PI * 2
-    const r = i < 8 ? POND.r + 0.5 : 58 + rand() * 12
-    const cx = i < 8 ? POND.x : 0
-    const cz = i < 8 ? POND.z : 0
-    const x = cx + Math.cos(a) * r
-    const z = cz + Math.sin(a) * r
-    if (i >= 8 && !free(x, z, 3, 1.5)) continue
-    const s = 0.5 + rand() * 1.1
-    const rock = createRock(s, rand())
-    rock.position.set(x, heightAt(x, z) + s * 0.15, z)
-    scene.add(rock)
-    if (s > 0.7) colliders.circle(x, z, s * 0.9)
-  }
-
-  // pedras espalhadas pelos campos
-  for (let i = 0; i < 70; i++) {
-    const a = rand() * Math.PI * 2
-    const r = VILLAGE_RADIUS + 4 + rand() * (WORLD_RADIUS - VILLAGE_RADIUS - 14)
-    const x = Math.cos(a) * r
-    const z = Math.sin(a) * r
-    if (colliders.blocked(x, z, 1.5)) continue
-    const s = 0.6 + rand() * 1.8
-    const rock = createRock(s, rand())
-    rock.position.set(x, heightAt(x, z) + s * 0.1, z)
-    scene.add(rock)
-    if (s > 0.8) colliders.circle(x, z, s * 0.85)
-  }
-
-  // cataventos
-  const pinColors = [0xe63946, 0x457b9d, 0xf4a261, 0x2a9d8f, 0xb5179e]
-  let pins = 0
-  for (let tries = 0; tries < 400 && pins < 14; tries++) {
-    const a = rand() * Math.PI * 2
-    const r = 8 + rand() * 55
-    const x = Math.cos(a) * r
-    const z = Math.sin(a) * r
-    if (!free(x, z, 2.2, 1.2) || distToPath(x, z) > 4) continue
-    const { group, rotor } = createPinwheel(pinColors[pins % pinColors.length])
-    group.position.set(x, heightAt(x, z), z)
-    group.rotation.y = rand() * Math.PI * 2
-    scene.add(group)
-    const speed = 2 + rand() * 3
-    animated.push((dt) => {
-      rotor.rotation.z -= speed * dt
-    })
-    colliders.circle(x, z, 0.15)
-    pins++
-  }
-
-  // ---------- grama e flores ----------
-  const grassPts: { x: number; z: number }[] = []
-  const flowerPts: { x: number; z: number }[] = []
-  for (let tries = 0; tries < 9000 && grassPts.length < 1600; tries++) {
-    const a = rand() * Math.PI * 2
-    const r = Math.sqrt(rand()) * 68
-    const x = Math.cos(a) * r
-    const z = Math.sin(a) * r
-    if (distToPath(x, z) < 2.3 || Math.hypot(x - POND.x, z - POND.z) < POND.r + 0.3 || colliders.blocked(x, z, 0.4)) continue
-    if (Math.abs(z - (TERRACE.zStart + TERRACE.zEnd) / 2) < 2.4 && Math.abs(x) > gap) continue
-    grassPts.push({ x, z })
-    if (rand() < 0.2) flowerPts.push({ x: x + 0.4, z: z - 0.3 })
-  }
-  for (let tries = 0; tries < 12000 && grassPts.length < 5200; tries++) {
-    const a = rand() * Math.PI * 2
-    const r = VILLAGE_RADIUS - 2 + rand() * (WORLD_RADIUS - VILLAGE_RADIUS - 15)
-    const x = Math.cos(a) * r
-    const z = Math.sin(a) * r
-    if (colliders.blocked(x, z, 0.4)) continue
-    grassPts.push({ x, z })
-    if (rand() < 0.25) flowerPts.push({ x: x + 0.4, z: z - 0.3 })
-  }
-  scene.add(createGrass(grassPts, windUniforms))
-  scene.add(createFlowers(flowerPts))
-
-  // ---------- nuvens ----------
-  const clouds: THREE.Group[] = []
-  for (let i = 0; i < 12; i++) {
-    const c = createCloud(rand())
-    const a = rand() * Math.PI * 2
-    const r = 90 + rand() * 180
-    c.position.set(Math.cos(a) * r, 70 + rand() * 30, Math.sin(a) * r)
-    c.rotation.y = rand() * Math.PI
-    scene.add(c)
-    clouds.push(c)
-  }
-  animated.push((dt) => {
-    for (const c of clouds) {
-      c.position.x += dt * 1.5
-      if (c.position.x > 280) c.position.x = -280
-    }
-  })
-
-  // ---------- pétalas ----------
-  const petals = new Petals()
-  scene.add(petals.points)
-  animated.push((dt, t, player) => petals.update(dt, t, player))
 
   return {
     colliders,
     sectors,
+    dayNight,
+    cuttables,
+    mapColor: (x, z) => colors[groundKind(x, z)],
     update(dt, t, player) {
-      windUniforms.uTime.value = t
-      for (const fn of animated) fn(dt, t, player)
+      dayNight.update(dt, player)
+      const night = dayNight.night
+      signs.update(dt, t, night)
+      street.update(night)
+      traffic.update(dt, t, player, night)
+      cuttables.update(dt)
+      cuttables.setNight(night)
+      hill.update(night)
+      neon.update(t, night)
+      for (const s of sectors) {
+        const mat = s.beam.material as THREE.ShaderMaterial
+        const dist = Math.hypot(player.x - s.def.x, player.z - s.def.z)
+        mat.uniforms.uTime.value = t
+        mat.uniforms.uOpacity.value = THREE.MathUtils.smoothstep(dist, 10, 30) * (s.visited ? 0.45 : 1) * (0.6 + night * 0.6)
+      }
     },
   }
 }

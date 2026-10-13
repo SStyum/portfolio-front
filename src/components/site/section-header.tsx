@@ -19,7 +19,7 @@ export function SectionHeader({ id, title, description }: { id: SectorId; title:
         href={s.gameHref}
         className="group inline-flex shrink-0 items-center gap-1.5 self-start rounded-full border px-4 py-2 text-sm text-muted-foreground transition-colors hover:border-foreground/30 hover:text-foreground md:self-auto"
       >
-        Ver na vila
+        Ver no jogo
         <ArrowUpRight className="size-4 transition-transform group-hover:-translate-y-0.5 group-hover:translate-x-0.5" />
       </a>
     </div>

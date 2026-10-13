@@ -14,9 +14,9 @@ export function SiteFooter() {
           <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(ellipse_at_top_right,#f2c87933,transparent_60%),radial-gradient(ellipse_at_bottom_left,#6fd08c22,transparent_55%)]" />
           <div className="relative">
             <p className="font-mono text-xs text-muted-foreground">modo jogo</p>
-            <h2 className="mt-2 font-display text-3xl font-semibold tracking-tight md:text-4xl">Prefere explorar? Entre na vila.</h2>
+            <h2 className="mt-2 font-display text-3xl font-semibold tracking-tight md:text-4xl">Prefere explorar? Entre em Tóquio.</h2>
             <p className="mt-3 max-w-lg text-muted-foreground">
-              O mesmo portfólio como um mundo 3D: ande, corra, pule e visite cada casa. Tem até espada.
+              O mesmo portfólio como uma Tóquio 3D: desça a escadaria, cruze Shibuya e escale telhados. Tem até espada.
             </p>
           </div>
           <span className="relative inline-flex h-12 shrink-0 items-center gap-2 rounded-xl bg-primary px-6 font-medium text-primary-foreground transition-transform group-hover:scale-[1.03]">

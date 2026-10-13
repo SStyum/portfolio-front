@@ -1,6 +1,5 @@
 import * as THREE from 'three'
 import type { GroundMark } from '../player/character'
-import { POND } from './layout'
 import { heightAt } from './terrain'
 
 const MAX_MARKS = 40
@@ -110,7 +109,6 @@ export class GroundMarks {
   add({ ax, az, bx, bz, width, strength }: GroundMark) {
     const cx = (ax + bx) / 2
     const cz = (az + bz) / 2
-    if (heightAt(cx, cz) < POND.water + 0.05) return // dentro d'água não marca
 
     const len = Math.max(0.2, Math.hypot(bx - ax, bz - az))
     const dx = (bx - ax) / len
@@ -154,7 +152,6 @@ export class GroundMarks {
 
   // cratera redonda do golpe aéreo
   crater(x: number, z: number, radius: number) {
-    if (heightAt(x, z) < POND.water + 0.05) return
     const geo = new THREE.PlaneGeometry(radius * 2, radius * 2, 10, 10)
     const pos = geo.attributes.position
     const spin = Math.random() * Math.PI * 2

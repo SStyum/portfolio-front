@@ -63,7 +63,7 @@ export function BlogSection() {
         <SectionHeader
           id="blog"
           title="Escrevo sobre o que aprendo construindo."
-          description="Arquitetura, pagamentos, observabilidade e os bastidores desta vila."
+          description="Arquitetura, pagamentos, observabilidade e os bastidores desta Tóquio em 3D."
         />
         <div className="mb-4">
           <SourceBadge source={data?.source} />

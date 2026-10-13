@@ -1,9 +1,9 @@
-// Planta da vila: setores, caminhos e marcos do terreno. Tudo em unidades de mundo (~1 = 1 metro).
-// +z é o sul (entrada da vila), -z é o norte (terraço da casa principal).
+// Planta da cidade (inspirada em Shibuya). Unidades de mundo ≈ metros.
+// +z é o sul (estação), -z é o norte. O cruzamento "scramble" fica no centro (0, 0).
 
 export type SectorId = 'sobre' | 'projetos' | 'blog' | 'observatorio' | 'api' | 'contato'
 
-export type BuildingKind = 'manor' | 'house' | 'tower' | 'kiosk'
+export type BuildingKind = 'house' | 'skyscraper' | 'studio' | 'cafe' | 'bookstore' | 'post'
 
 export interface SectorDef {
   id: SectorId
@@ -13,100 +13,109 @@ export interface SectorDef {
   color: number
   x: number
   z: number
-  // rotação em Y; a frente da construção (porta) aponta para +z local
+  // rotação em Y; a frente do prédio (porta) aponta para +z local
   rot: number
   kind: BuildingKind
   w: number
   d: number
+  h: number
 }
 
-const E = Math.PI / 2
-const W = -Math.PI / 2
+// ---------- ruas ----------
+// mesmas linhas nos dois eixos: avenidas em x = c (correm ao longo de z) e em z = c
+export const STREETS = [-124, -82, -40, 0, 40, 82, 124]
+export const streetWidth = (c: number) => (c === 0 ? 20 : Math.abs(c) === 40 ? 12 : 10)
+export const SIDEWALK = 3.5
+export const CURB = 0.15 // altura da calçada
+// até onde se anda (depois da última rua começam os prédios da borda)
+export const CITY_EDGE = 129
+export const WALK_RADIUS = CITY_EDGE
+
+// faixa de rua que contém essa coordenada, se houver
+export function streetAt(v: number): number | null {
+  for (const c of STREETS) if (Math.abs(v - c) < streetWidth(c) / 2) return c
+  return null
+}
+
+export const isRoad = (x: number, z: number) => streetAt(x) !== null || streetAt(z) !== null
+
+// ---------- quarteirões ----------
+export interface Block {
+  x0: number
+  x1: number
+  z0: number
+  z1: number
+}
+
+const edges = (i: number) => [STREETS[i] + streetWidth(STREETS[i]) / 2, STREETS[i + 1] - streetWidth(STREETS[i + 1]) / 2]
+
+// quarteirões andáveis entre as ruas
+export const BLOCKS: Block[] = (() => {
+  const out: Block[] = []
+  for (let i = 0; i < STREETS.length - 1; i++) {
+    for (let j = 0; j < STREETS.length - 1; j++) {
+      const [x0, x1] = edges(i)
+      const [z0, z1] = edges(j)
+      out.push({ x0, x1, z0, z1 })
+    }
+  }
+  return out
+})()
+
+export const blockAt = (x: number, z: number) => BLOCKS.find((b) => x >= b.x0 && x <= b.x1 && z >= b.z0 && z <= b.z1) ?? null
+
+// praça da estação (sudoeste do cruzamento): sem prédios, com árvores e a estátua
+export const PLAZA: Block = { x0: -34, x1: -10, z0: 10, z1: 34 }
+export const isPlaza = (b: Block) => b.x0 === PLAZA.x0 && b.z0 === PLAZA.z0
+
+// ---------- setores do portfólio ----------
+const S = Math.PI // frente pro norte (porta em -z)
 
 export const SECTORS: SectorDef[] = [
-  { id: 'sobre', name: 'Sobre mim', place: 'Casa Principal', icon: '⛩', color: 0xffc857, x: 0, z: -45, rot: 0, kind: 'manor', w: 13, d: 9 },
-  { id: 'projetos', name: 'Projetos', place: 'Ateliê', icon: '⚒', color: 0x6fd08c, x: -30, z: -8, rot: E, kind: 'house', w: 10, d: 8 },
-  { id: 'blog', name: 'Blog', place: 'Casa de Chá', icon: '✎', color: 0xff8fa3, x: 30, z: -12, rot: W, kind: 'house', w: 10, d: 8 },
-  { id: 'observatorio', name: 'Observabilidade', place: 'Torre de Vigia', icon: '◉', color: 0x4cc9f0, x: -36, z: 28, rot: E, kind: 'tower', w: 5, d: 5 },
-  { id: 'api', name: 'Documentação da API', place: 'Biblioteca', icon: '❖', color: 0xb388ff, x: 34, z: 30, rot: W, kind: 'house', w: 8, d: 7 },
-  { id: 'contato', name: 'Contato', place: 'Correio', icon: '✉', color: 0xf4a261, x: -12, z: 50, rot: E, kind: 'kiosk', w: 4, d: 3 },
+  // em volta do cruzamento
+  // casa inicial, no alto da colina, entre as duas escadarias (porta pra rua de cima, neon pra cidade)
+  { id: 'sobre', name: 'Sobre mim', place: 'Casa', icon: '◆', color: 0xff4fa3, x: 22, z: -142, rot: Math.PI, kind: 'house', w: 7.4, d: 10, h: 6.6 },
+  { id: 'observatorio', name: 'Observabilidade', place: 'Torre de Vigia', icon: '◉', color: 0x4cc9f0, x: 22, z: -22, rot: 0, kind: 'skyscraper', w: 17, d: 17, h: 112 },
+  { id: 'blog', name: 'Blog', place: 'Café', icon: '✎', color: 0xff8fa3, x: 22, z: 20, rot: S, kind: 'cafe', w: 14, d: 10, h: 10 },
+  // um quarteirão pra fora
+  { id: 'projetos', name: 'Projetos', place: 'Ateliê', icon: '⚒', color: 0x6fd08c, x: -61, z: 20, rot: S, kind: 'studio', w: 18, d: 12, h: 16 },
+  { id: 'api', name: 'Documentação da API', place: 'Biblioteca', icon: '❖', color: 0xb388ff, x: -61, z: -22, rot: 0, kind: 'bookstore', w: 18, d: 14, h: 22 },
+  { id: 'contato', name: 'Contato', place: 'Correio', icon: '✉', color: 0xf4a261, x: 61, z: -22, rot: 0, kind: 'post', w: 14, d: 10, h: 9 },
 ]
 
-// Ponto em frente à porta (onde o jogador interage)
+// Ponto em frente à porta (onde o jogador interage), já na calçada
 export function doorPoint(s: SectorDef, extra = 1.6): { x: number; z: number } {
   const dist = s.d / 2 + extra
   return { x: s.x + Math.sin(s.rot) * dist, z: s.z + Math.cos(s.rot) * dist }
 }
 
-export const SPAWN = { x: 0, z: 60, yaw: 0 }
+// ---------- colina ao norte com as escadarias (estilo santuário Suga) ----------
+export const HILL = { front: -134, back: -192, x0: -72, x1: 72, h: 8.5 }
+export const STAIR_RUN = 0.36 // profundidade do degrau
+export const STAIR_STEPS = 46
+export const STAIR_TOP = HILL.front - STAIR_RUN * STAIR_STEPS // onde a escada chega lá em cima
+// duas escadarias paralelas, com a casa inicial entre elas
+export const STAIRS = [
+  { x0: 14.6, x1: 17.6 },
+  { x0: 26.4, x1: 29.4 },
+]
+// rua estreita lá em cima, ligando o topo das duas escadas
+export const LANE = { z0: STAIR_TOP - 6.5, z1: STAIR_TOP, x0: HILL.x0 + 4, x1: HILL.x1 - 4 }
 
-// Raio da vila (casas, caminhos, grama baixa). Depois dela vêm colinas e campos abertos.
-export const VILLAGE_RADIUS = 70
-// Raio do mundo: perto daqui começam as montanhas (íngremes demais pra subir)
-export const WORLD_RADIUS = 175
-// Limite duro, por segurança (as montanhas já seguram antes)
-export const WALK_RADIUS = WORLD_RADIUS + 10
+export const inHill = (x: number, z: number) => z < HILL.front && z > HILL.back && x > HILL.x0 && x < HILL.x1
+export const stairAt = (x: number, z: number) => (z <= HILL.front && z > STAIR_TOP ? STAIRS.find((s) => x > s.x0 && x < s.x1) ?? null : null)
 
-// Terraço norte (mais alto), separado por um muro de pedra com escada no meio
-export const TERRACE = { zStart: -27, zEnd: -31, height: 3.2, stairHalfWidth: 3.5 }
+// começa no alto da escadaria da esquerda, olhando a cidade lá embaixo
+export const SPAWN = { x: 15.35, z: STAIR_TOP - 1.6, yaw: 0 } // metade esquerda (o corrimão divide a escada)
+export const HELP_SIGN = { x: 11, z: STAIR_TOP - 2.2 }
 
-export const POND = { x: 15, z: 9, r: 7, depth: 1.5, water: -0.45 }
-
-// Caminhos de terra (segmentos), usados na pintura do terreno e para evitar grama/árvores
-const door = (id: SectorId) => {
-  const s = SECTORS.find((x) => x.id === id)!
-  return doorPoint(s, 1)
+// mapa: tipo de chão em cada ponto
+export type GroundKind = 'road' | 'crosswalk' | 'sidewalk' | 'plaza' | 'outside' | 'hill' | 'stairs'
+export function groundKind(x: number, z: number): GroundKind {
+  if (stairAt(x, z)) return 'stairs'
+  if (inHill(x, z)) return z > LANE.z0 && z < LANE.z1 ? 'road' : 'hill'
+  if (Math.abs(x) > CITY_EDGE + 1 || Math.abs(z) > CITY_EDGE + 1) return 'outside'
+  if (isRoad(x, z)) return 'road'
+  if (x >= PLAZA.x0 && x <= PLAZA.x1 && z >= PLAZA.z0 && z <= PLAZA.z1) return 'plaza'
+  return 'sidewalk'
 }
-
-export const PATHS: [number, number, number, number][] = (() => {
-  const d = Object.fromEntries(SECTORS.map((s) => [s.id, door(s.id)])) as Record<SectorId, { x: number; z: number }>
-  return [
-    [0, 66, 0, -39],
-    [0, d.projetos.z, d.projetos.x, d.projetos.z],
-    [0, d.blog.z, d.blog.x, d.blog.z],
-    [0, d.observatorio.z, d.observatorio.x, d.observatorio.z],
-    [0, d.api.z, d.api.x, d.api.z],
-    [0, d.contato.z, d.contato.x, d.contato.z],
-    [-14, -38, 14, -38],
-  ]
-})()
-
-export const PATH_WIDTH = 1.9
-
-export function distToPath(x: number, z: number): number {
-  let best = Infinity
-  for (const [ax, az, bx, bz] of PATHS) {
-    const dx = bx - ax
-    const dz = bz - az
-    const len2 = dx * dx + dz * dz
-    const t = len2 === 0 ? 0 : Math.max(0, Math.min(1, ((x - ax) * dx + (z - az) * dz) / len2))
-    const px = ax + dx * t
-    const pz = az + dz * t
-    best = Math.min(best, Math.hypot(x - px, z - pz))
-  }
-  return best
-}
-
-// Casas decorativas (sem setor)
-export const EXTRA_HOUSES: { x: number; z: number; rot: number; w: number; d: number }[] = [
-  { x: -26, z: -44, rot: 0, w: 8, d: 7 },
-  { x: 26, z: -45, rot: 0, w: 8, d: 7 },
-  { x: -50, z: 6, rot: E, w: 8, d: 7 },
-  { x: 52, z: 4, rot: W, w: 8, d: 6 },
-  { x: -24, z: 40, rot: Math.PI, w: 7, d: 6 },
-  { x: 22, z: 50, rot: W, w: 7, d: 6 },
-  { x: -46, z: -22, rot: E, w: 7, d: 6 },
-]
-
-// Construções (setores + casas decorativas + portal) como círculos: o terreno fica plano perto delas
-export const BUILDINGS: { x: number; z: number; r: number }[] = [
-  ...SECTORS.map((s) => ({ x: s.x, z: s.z, r: Math.hypot(s.w, s.d) / 2 + 4 })),
-  ...EXTRA_HOUSES.map((h) => ({ x: h.x, z: h.z, r: Math.hypot(h.w, h.d) / 2 + 4 })),
-  { x: 0, z: 63, r: 7 },
-]
-
-// Placas de direção fixas (as dos cruzamentos e as de fora da vila são calculadas em world.ts)
-export const SIGNPOSTS: { x: number; z: number }[] = [
-  { x: 2.8, z: 58 }, // entrada, logo depois do portal
-  { x: 5.5, z: -35.5 }, // terraço
-]

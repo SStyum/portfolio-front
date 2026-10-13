@@ -150,11 +150,11 @@ export function Hero() {
                                 <Gamepad2 className="size-5 text-primary" /> Modo jogo
                             </p>
                             <p className="mt-2 text-muted-foreground">
-                                Ande por uma vila 3D onde cada casa guarda uma parte do portfólio. Tem até espada. Melhor no computador.
+                                Desça a escadaria e explore uma Tóquio 3D: cada prédio guarda uma parte do portfólio. Tem espada e parkour. Melhor no computador.
                             </p>
                         </div>
                         <span className="mt-auto inline-flex items-center gap-1.5 font-medium">
-                            Entrar na vila <ArrowRight className="size-4 transition-transform group-hover:translate-x-1" />
+                            Entrar em Tóquio <ArrowRight className="size-4 transition-transform group-hover:translate-x-1" />
                         </span>
                     </a>
                 </div>

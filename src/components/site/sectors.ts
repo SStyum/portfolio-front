@@ -1,6 +1,6 @@
 import { SECTORS, type SectorId } from "@/src/world/layout";
 
-// As seções do site são os mesmos setores da vila: mesmo nome, lugar e cor.
+// As seções do site são os mesmos setores do jogo: mesmo nome, lugar e cor.
 
 export const hex = (n: number) => `#${n.toString(16).padStart(6, "0")}`;
 

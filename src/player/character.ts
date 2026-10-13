@@ -107,6 +107,24 @@ const AIR_DIVE: Move = { duration: 0.12, keys: [{ at: 1, pose: DIVE }] }
 const SLAM = pose({ rx: -0.25, rz: -0.5, lx: -0.25, lz: 0.5, hold: 3.15, pitch: 0.42, drop: 0.08, grip: 1 })
 const AIR_SLAM: Move = { duration: 0.55, keys: [{ at: 0.08, pose: SLAM }, { at: 0.75, pose: SLAM }, { at: 1, pose: { ...SLAM, grip: 0.4 } }] }
 
+// parkour
+export type ParkourMode = 'kick' | 'hang' | 'climb' | 'bump'
+const KICK = pose({ rx: -2.9, rz: -0.25, lx: -2.9, lz: 0.25, pitch: -0.12, tuck: 0.35 })
+const HANG = pose({ rx: -3.0, rz: -0.2, lx: -3.0, lz: 0.2, pitch: 0.05, tuck: 0.15 })
+const BUMP = pose({ rx: 0.7, rz: 0.9, lx: 0.7, lz: -0.9, pitch: -0.35 })
+
+function climbPose(p: number): Pose {
+  if (p < 0.45) {
+    // puxada: o corpo sobe com as mãos na beirada, joelhos subindo
+    const u = p / 0.45
+    return pose({ rx: -2.7, rz: -0.2, lx: -2.7, lz: 0.2, pitch: 0.3 * u, tuck: 0.7 * u })
+  }
+  // mortal pra frente por cima da beirada, abrindo pra aterrissar
+  const u = (p - 0.45) / 0.55
+  const e = u * u * (3 - 2 * u)
+  return pose({ rx: lerp(-2.4, -0.4, e), rz: -0.3, lx: lerp(-2.4, -0.4, e), lz: 0.3, flip: Math.PI * 2 * e, tuck: 1 - e * 0.9, pitch: 0.1 })
+}
+
 function evalMove(move: Move, from: Pose, p: number, out: Pose) {
   let a = from
   let aAt = 0
@@ -254,6 +272,12 @@ export class Character {
   private tmpA = new THREE.Vector3()
   private tmpB = new THREE.Vector3()
   private tmpC = new THREE.Vector3()
+
+  // parkour (comandado pelo controlador)
+  private pk: ParkourMode | null = null
+  private pkP = 0
+  private ledgeL = new THREE.Vector3()
+  private ledgeR = new THREE.Vector3()
 
   // chamado quando a espada marca o chão
   onGroundMark: (mark: GroundMark) => void = () => {}
@@ -468,6 +492,43 @@ export class Character {
     this.onImpact({ x, y: heightAt(x, z), z, strength: 1, crater: true })
   }
 
+  // ---------- parkour ----------
+  setParkour(mode: ParkourMode | null) {
+    if (mode === this.pk) return
+    if (mode) {
+      if (this.move) this.endMove()
+      this.queuedAttack = null
+      // mãos livres pra escalar: espada volta pras costas na hora
+      if (mode !== 'bump' && this.swordState !== 'sheathed') this.stowSword()
+    } else {
+      // o mortal da subida termina numa volta inteira: zera sem desvirar
+      this.curPose.flip = Math.atan2(Math.sin(this.curPose.flip), Math.cos(this.curPose.flip))
+    }
+    this.pk = mode
+    this.pkP = 0
+  }
+
+  setClimbProgress(p: number) {
+    this.pkP = p
+  }
+
+  setLedgeHands(left: THREE.Vector3, right: THREE.Vector3) {
+    this.ledgeL.copy(left)
+    this.ledgeR.copy(right)
+  }
+
+  // congelada curtinha (ex.: quando corta algo)
+  hitPause(seconds: number) {
+    this.hitStop = Math.max(this.hitStop, seconds)
+  }
+
+  private stowSword() {
+    this.swordState = 'sheathed'
+    this.swordT = 0
+    this.swordManualY = null
+    if (this.sword.parent !== this.backSlot) this.pendingSlot = this.backSlot
+  }
+
   private startTransition(state: 'drawing' | 'sheathing') {
     this.swordState = state
     this.swordT = 0
@@ -666,8 +727,16 @@ export class Character {
     this.updateMoves(dt)
     this.applySheathFx()
 
+    // pendurado (e no começo da subida): mãos na beirada
+    if (this.pk === 'hang' || (this.pk === 'climb' && this.pkP < 0.5)) {
+      const w = this.pk === 'hang' ? 1 : 1 - smoothstep(this.pkP, 0.35, 0.5)
+      this.body.updateMatrixWorld(true)
+      this.aim(this.armR, this.ledgeR, w)
+      this.aim(this.armL, this.ledgeL, w)
+    }
+
     // mão esquerda segura o cabo nos golpes de duas mãos
-    const gw = this.curPose.grip * this.attackW
+    const gw = this.pk ? 0 : this.curPose.grip * this.attackW
     if (gw > 0.01 && this.sword.parent === this.handSlot && this.fx.lW <= 0) {
       this.aim(this.armL, this.sword.localToWorld(this.tmpC.set(0, -0.14, 0)), gw)
     }
@@ -689,6 +758,16 @@ export class Character {
     }
     this.graceT = Math.max(0, this.graceT - dt)
     this.lunge = 0
+
+    if (this.pk) {
+      const target = this.pk === 'kick' ? KICK : this.pk === 'hang' ? HANG : this.pk === 'bump' ? BUMP : climbPose(this.pkP)
+      // a subida segue a animação exata (mortal); o resto entra suave
+      const k = this.pk === 'climb' ? 1 : Math.min(1, dt * 16)
+      for (const f of Object.keys(this.curPose) as (keyof Pose)[]) this.curPose[f] += (target[f] - this.curPose[f]) * k
+      this.attackW = 1
+      this.applyPose(this.curPose, walk)
+      return
+    }
 
     let prevP = 0
     if (this.move) {

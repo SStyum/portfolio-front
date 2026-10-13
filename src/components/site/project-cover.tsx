@@ -1,7 +1,7 @@
 import type { Project, ProjectCategory } from "@/src/content";
 import { cn } from "@/src/lib/utils";
 
-// cor de cada categoria (mesma família das cores da vila)
+// cor de cada categoria (mesma família das cores do jogo)
 export const CATEGORY_COLOR: Record<ProjectCategory, string> = {
   "Back-end": "#4cc9f0",
   "Front-end": "#ff8fa3",

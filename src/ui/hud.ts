@@ -1,6 +1,5 @@
 import type { Colliders } from '../world/colliders'
-import { POND, WORLD_RADIUS, distToPath, PATH_WIDTH } from '../world/layout'
-import { heightAt } from '../world/terrain'
+import { CITY_EDGE } from '../world/layout'
 import { PANELS, esc, type PanelId } from './panels'
 
 export interface Place {
@@ -19,7 +18,7 @@ export interface Place {
 const hex = (c: number) => '#' + c.toString(16).padStart(6, '0')
 
 // Extensão do mundo desenhada no mapa grande; o minimapa mostra só a região em volta do jogador
-const EXTENT = WORLD_RADIUS + 15
+const EXTENT = CITY_EDGE + 12
 const MINI_EXTENT = 55
 
 export class Hud {
@@ -42,12 +41,19 @@ export class Hud {
   onJumpTap: () => void = () => {}
   onAttackTap: () => void = () => {}
 
-  constructor(private places: Place[], colliders: Colliders) {
+  private clockEl: HTMLElement
+
+  constructor(
+    private places: Place[],
+    colliders: Colliders,
+    private mapColor: (x: number, z: number) => [number, number, number],
+  ) {
     this.root.className = 'hud'
     this.root.innerHTML = `
       <div class="prompt hidden"></div>
       <div class="banner hidden"><span class="banner-sub"></span><span class="banner-title"></span><span class="banner-line"></span></div>
       <div class="minimap-wrap"><canvas class="minimap" width="200" height="200"></canvas><span class="minimap-n">N</span></div>
+      <div class="clock"></div>
       <a class="to-site" href="/home">Ver como site</a>
       <div class="hint"><kbd>WASD</kbd> andar · <kbd>Shift</kbd> correr · <kbd>Espaço</kbd> pular · <kbd>F</kbd> combo · <kbd>Espaço+F</kbd> aéreo · <kbd>E</kbd> entrar · <kbd>M</kbd> mapa</div>
       <div class="touch-buttons">
@@ -68,7 +74,7 @@ export class Hud {
       </div>
       <div class="map-overlay hidden">
         <div class="map-box">
-          <header><h2>Mapa da Vila</h2><button class="panel-close map-close" aria-label="Fechar">✕</button></header>
+          <header><h2>Mapa de Tóquio</h2><button class="panel-close map-close" aria-label="Fechar">✕</button></header>
           <div class="map-content">
             <div class="map-canvas-wrap"><canvas class="bigmap" width="560" height="560"></canvas></div>
             <div class="map-list"></div>
@@ -101,6 +107,7 @@ export class Hud {
     this.bigMap.addEventListener('click', (e) => this.onMapClick(e))
 
     this.mapBg = this.renderMapBackground(colliders)
+    this.clockEl = this.root.querySelector<HTMLElement>('.clock')!
   }
 
   get panelOpen(): boolean {
@@ -226,17 +233,7 @@ export class Hud {
       for (let px = 0; px < size; px++) {
         const x = (px / size) * EXTENT * 2 - EXTENT
         const z = (py / size) * EXTENT * 2 - EXTENT
-        const h = heightAt(x, z)
-        let col: [number, number, number]
-        if (Math.hypot(x - POND.x, z - POND.z) < POND.r - 0.5) col = [86, 156, 196]
-        else if (h > 5) {
-          const k = Math.min(1, (h - 5) / 25)
-          col = [150 - k * 40, 140 - k * 40, 125 - k * 35]
-        } else if (distToPath(x, z) < PATH_WIDTH) col = [222, 196, 146]
-        else {
-          const k = h / 4
-          col = [120 + k * 18, 168 + k * 14, 92 + k * 10]
-        }
+        const col = this.mapColor(x, z)
         const i = (py * size + px) * 4
         img.data[i] = col[0]
         img.data[i + 1] = col[1]
@@ -249,24 +246,20 @@ export class Hud {
     const s = size / (EXTENT * 2)
     for (const col of colliders.list) {
       if (col.type === 'box') {
-        if (col.hw > 20) continue // muro do terraço
+        if (col.top < 1.5) continue // coisas baixas não aparecem no mapa
         ctx.save()
         ctx.translate((col.x + EXTENT) * s, (col.z + EXTENT) * s)
         ctx.rotate(-col.rot)
-        ctx.fillStyle = '#5b4636'
+        ctx.fillStyle = col.top < 12 ? '#6b6560' : '#3c3a40'
         ctx.fillRect(-col.hw * s, -col.hd * s, col.hw * 2 * s, col.hd * 2 * s)
         ctx.restore()
-      } else if (col.r > 0.5) {
-        ctx.fillStyle = 'rgba(52, 90, 48, 0.75)'
+      } else if (col.r > 0.3 && col.top > 4) {
+        // círculo grande é prédio (a torre redonda); pequeno é árvore
+        ctx.fillStyle = col.r > 2 ? '#3c3a40' : 'rgba(70, 110, 60, 0.8)'
         ctx.beginPath()
-        ctx.arc((col.x + EXTENT) * s, (col.z + EXTENT) * s, Math.max(1.2, Math.min(3, col.r * s * 2.2)), 0, Math.PI * 2)
+        ctx.arc((col.x + EXTENT) * s, (col.z + EXTENT) * s, col.r > 2 ? col.r * s : Math.max(1.2, Math.min(3, col.r * s * 2.2)), 0, Math.PI * 2)
         ctx.fill()
       }
-    }
-    // muro do terraço
-    ctx.fillStyle = '#7d7468'
-    for (const col of colliders.list) {
-      if (col.type === 'box' && col.hw > 20) ctx.fillRect((col.x - col.hw + EXTENT) * s, (col.z - col.hd + EXTENT) * s, col.hw * 2 * s, col.hd * 2 * s)
     }
     return c
   }
@@ -346,6 +339,10 @@ export class Hud {
     ctx.fill()
     ctx.stroke()
     ctx.restore()
+  }
+
+  setClock(text: string) {
+    if (this.clockEl.textContent !== text) this.clockEl.textContent = text
   }
 
   update(player: { x: number; z: number; facing: number }, t: number) {

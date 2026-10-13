@@ -1,4 +1,4 @@
-// Conteúdo estático do portfólio, compartilhado pelo jogo (vila 3D) e pelo site.
+// Conteúdo estático do portfólio, compartilhado pelo jogo (Tóquio 3D) e pelo site.
 // Edite aqui seus dados, projetos e links. Itens marcados com MOCK são exemplos para substituir.
 
 export const profile = {
@@ -8,7 +8,7 @@ export const profile = {
   available: true, // aparece como "disponível para projetos"
   // TODO: escreva sua bio
   bio: [
-    'Bem-vindo à vila! Aqui cada casa guarda uma parte do meu trabalho.',
+    'Bem-vindo! Aqui cada prédio de Tóquio guarda uma parte do meu trabalho.',
     'Sou desenvolvedor focado em back-end com Node.js e TypeScript, arquitetura limpa e infraestrutura em nuvem.',
   ],
   // frase curta pro topo do site
@@ -95,7 +95,7 @@ export const projects: Project[] = [
   {
     slug: 'portfolio-api',
     name: 'Portfolio API',
-    description: 'O back-end que alimenta esta vila: blog, contas, chat com IA, pagamentos e observabilidade.',
+    description: 'O back-end que alimenta este portfólio: blog, contas, chat com IA, pagamentos e observabilidade.',
     tags: ['NestJS', 'DDD', 'Prisma', 'PostgreSQL', 'AWS', 'Stripe'],
     year: 2026,
     status: 'Em produção',
@@ -132,8 +132,8 @@ export const projects: Project[] = [
   },
   {
     slug: 'vila-do-portfolio',
-    name: 'Vila do Portfólio',
-    description: 'Este jogo: um mundo 3D explorável onde cada setor do portfólio é um lugar da vila.',
+    name: 'Portfólio em Tóquio',
+    description: 'Este jogo: uma Shibuya 3D explorável onde cada setor do portfólio é um prédio da cidade.',
     tags: ['Three.js', 'TypeScript', 'Next.js'],
     year: 2026,
     status: 'Em desenvolvimento',
@@ -142,18 +142,18 @@ export const projects: Project[] = [
     featured: true,
     highlights: [
       'Personagem em terceira pessoa com pulo, corrida, colisão e combo de espada',
-      'Terreno procedural, mapa com viagem rápida e minimapa',
+      'Shibuya procedural com ciclo dia e noite, trânsito, pedestres e parkour',
       'Painéis que consomem a API real (blog, métricas e Swagger)',
     ],
     metrics: [
       { label: 'linhas de Three.js', value: '2,3 mil' },
       { label: 'modelos importados', value: '0' },
-      { label: 'setores na vila', value: '6' },
+      { label: 'setores na cidade', value: '6' },
     ],
     story: [
       {
         title: 'A ideia',
-        body: 'Transformar a leitura de um portfólio num passeio: cada casa da vila é uma seção, e o visitante descobre o conteúdo andando.',
+        body: 'Transformar a leitura de um portfólio num passeio: cada prédio da cidade é uma seção, e o visitante descobre o conteúdo andando.',
       },
       {
         title: 'Como foi feito',
