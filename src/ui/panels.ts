@@ -124,14 +124,21 @@ const fmtUptime = (s: number) => {
   return h > 0 ? `${h}h ${m}min` : `${m}min ${Math.floor(s % 60)}s`
 }
 
+// Assinatura salva pelo site (src/stores/premium.store.ts, chave PREMIUM_STORAGE_KEY)
+const isPremium = (): boolean => {
+  try {
+    return JSON.parse(localStorage.getItem('portfolio:premium') ?? '{}')?.state?.isPremium === true
+  } catch {
+    return false
+  }
+}
+
 const statTile = (label: string, value: string) => `<div class="stat"><span class="stat-value">${value}</span><span class="stat-label">${label}</span></div>`
 
 const observatorio: Renderer = (body) => {
-  body.innerHTML = `
-    <p>Da torre de vigia dá pra ver tudo que acontece na API. A API expõe métricas no formato Prometheus em <code>/metrics</code>; o Prometheus coleta a cada poucos segundos e o Grafana desenha os gráficos.</p>
-    <h4>Agora, ao vivo <span class="live-dot"></span></h4>
-    <div class="live">${loading}</div>
-    <div class="actions">
+  const premium = isPremium()
+  const grafana = premium
+    ? `<div class="actions">
       <a class="btn" href="${esc(GRAFANA_DASHBOARD_URL)}" target="_blank" rel="noopener">Abrir dashboard no Grafana</a>
       <a class="btn ghost" href="${esc(PROMETHEUS_URL)}" target="_blank" rel="noopener">Prometheus</a>
       <a class="btn ghost" href="${esc(API_URL)}/metrics" target="_blank" rel="noopener">/metrics cru</a>
@@ -145,6 +152,18 @@ const observatorio: Renderer = (body) => {
       <li>Abra <a href="${esc(GRAFANA_DASHBOARD_URL)}" target="_blank" rel="noopener">o dashboard "Portfolio API"</a>. Login: <code>admin</code> / <code>admin</code> (ou acesso anônimo de leitura).</li>
       <li>Ande pela vila e abra o blog: cada requisição aparece nos gráficos em alguns segundos.</li>
     </ol>`
+    : `
+    <div class="notice">
+      <strong>🔒 O dashboard Grafana é exclusivo para assinantes.</strong>
+      <p>Latência p50/p95, taxa de erro e tráfego por rota, ao vivo. Assine o Acesso Observatório no site e volte aqui: a torre libera o painel.</p>
+    </div>
+    <div class="actions"><a class="btn" href="/home#observatorio">Assinar no site</a></div>`
+
+  body.innerHTML = `
+    <p>Da torre de vigia dá pra ver tudo que acontece na API. A API expõe métricas no formato Prometheus em <code>/metrics</code>; o Prometheus coleta a cada poucos segundos e o Grafana desenha os gráficos.</p>
+    <h4>Agora, ao vivo <span class="live-dot"></span></h4>
+    <div class="live">${loading}</div>
+    ${grafana}`
 
   const live = body.querySelector<HTMLElement>('.live')!
   const render = (m: MetricsSummary) => {
@@ -185,7 +204,7 @@ const observatorio: Renderer = (body) => {
   tick()
   const timer = window.setInterval(tick, 5000)
 
-  body.querySelector('.embed')!.addEventListener('click', (e) => {
+  body.querySelector('.embed')?.addEventListener('click', (e) => {
     ;(e.currentTarget as HTMLElement).remove()
     body.querySelector('.embed-slot')!.innerHTML = `
       <iframe class="grafana" src="${esc(GRAFANA_DASHBOARD_URL)}?orgId=1&kiosk&theme=dark&refresh=5s" title="Dashboard Grafana"></iframe>

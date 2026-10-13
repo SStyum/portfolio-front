@@ -1,13 +1,28 @@
+import { AboutSection } from "../site/about-section";
+import { ApiSection } from "../site/api-section";
+import { BlogSection } from "../site/blog-section";
+import { ContactSection } from "../site/contact-section";
+import { IntroSection } from "../site/intro-section";
+import { ObservabilitySection } from "../site/observability-section";
+import { ProjectsSection } from "../site/projects-section";
+import { SiteFooter } from "../site/site-footer";
+import { SiteNav } from "../site/site-nav";
 
-
+// Modo site: o mesmo conteúdo da vila, em seções. A ordem segue SITE_SECTIONS.
 export function HomePage() {
   return (
-    <section className="min-h-screen">
-      <div className="mx-auto flex min-h-screen max-w-7x1 flex-col items-center justify-center">
-        <h1>Seja bem vindo, e obrigado.</h1>
-        <p>Me chamo Eric e você está no meu playground de engenheiro.</p>
-        <h2> Meu portfólio.</h2>
-      </div>
-    </section>
-  )
+    <>
+      <SiteNav />
+      <main className="flex-1">
+        <IntroSection />
+        <AboutSection />
+        <ProjectsSection />
+        <ObservabilitySection />
+        <BlogSection />
+        <ApiSection />
+        <ContactSection />
+      </main>
+      <SiteFooter />
+    </>
+  );
 }

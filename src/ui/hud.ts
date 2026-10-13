@@ -47,6 +47,7 @@ export class Hud {
       <div class="prompt hidden"></div>
       <div class="banner hidden"><span class="banner-sub"></span><span class="banner-title"></span><span class="banner-line"></span></div>
       <div class="minimap-wrap"><canvas class="minimap" width="200" height="200"></canvas><span class="minimap-n">N</span></div>
+      <a class="to-site" href="/home">Ver como site</a>
       <div class="hint"><kbd>WASD</kbd> andar · <kbd>Shift</kbd> correr · <kbd>Espaço</kbd> pular · <kbd>F</kbd> combo · <kbd>E</kbd> entrar · <kbd>M</kbd> mapa</div>
       <div class="touch-buttons">
         <button class="tbtn tbtn-e">E</button>

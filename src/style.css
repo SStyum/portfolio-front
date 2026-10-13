@@ -905,3 +905,34 @@ a {
     grid-column: 1 / -1;
   }
 }
+
+/* ---------- ponte com o modo site ---------- */
+.title-site {
+  display: block;
+  margin-top: 1em;
+  color: var(--muted);
+  font-size: 0.95rem;
+  text-decoration: none;
+}
+
+.title-site:hover {
+  color: var(--ink);
+}
+
+.to-site {
+  position: absolute;
+  top: 16px;
+  left: 16px;
+  padding: 0.45em 0.9em;
+  border: 1px solid var(--panel-line);
+  border-radius: 10px;
+  background: rgba(18, 16, 14, 0.55);
+  color: var(--ink);
+  font-size: 0.85rem;
+  text-decoration: none;
+  pointer-events: auto;
+}
+
+.to-site:hover {
+  background: rgba(18, 16, 14, 0.8);
+}

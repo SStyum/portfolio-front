@@ -21,6 +21,7 @@ title.innerHTML = `
     <h1>Vila do Portfólio</h1>
     <p class="title-sub">Explore a vila. Cada feixe de luz é um setor do portfólio.</p>
     <button class="btn start" disabled>Carregando…</button>
+    <a class="title-site" href="/home">Prefiro ver como site →</a>
     <div class="title-controls">
       <span><kbd>WASD</kbd> andar</span><span><kbd>Shift</kbd> correr</span><span><kbd>Espaço</kbd> pular</span>
       <span><kbd>Mouse</kbd> câmera</span><span><kbd>E</kbd> entrar</span><span><kbd>M</kbd> mapa</span>
@@ -162,7 +163,11 @@ function start() {
     if (!input.isTouch) renderer.domElement.requestPointerLock?.()
     setTimeout(() => hud.showBanner('Vila do Portfólio', 'Bem-vindo, viajante'), 700)
   })
-  if (new URLSearchParams(location.search).has('play')) startBtn.click()
+  const params = new URLSearchParams(location.search)
+  if (params.has('play')) startBtn.click()
+  // vindo do site (?setor=projetos): começa em frente àquele lugar
+  const target = places.find((p) => p.id === params.get('setor'))
+  if (target) player.teleport(target.door.x, target.door.z, target.facing)
 
   const discovered = new Set<string>()
   const clock = new THREE.Clock()
