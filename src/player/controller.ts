@@ -89,6 +89,7 @@ export class PlayerController {
       this.velY = JUMP
       this.onGround = false
     }
+    if (input.gameplay && (input.consume('KeyF') || input.consume('Attack'))) this.character.attack()
     this.velY -= GRAVITY * dt
     this.position.y += this.velY * dt
     if (this.position.y <= ground) {

@@ -135,6 +135,7 @@ function start() {
   }
   hud.onInteractTap = () => input.press('KeyE')
   hud.onJumpTap = () => input.press('Space')
+  hud.onAttackTap = () => input.press('Attack')
   hud.onTravel = (p) => {
     fade.classList.add('on')
     setTimeout(() => {

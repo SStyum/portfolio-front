@@ -1,5 +1,7 @@
 import * as THREE from 'three'
 
+const ATTACK_TIME = 0.45
+
 // Personagem low-poly montado com primitivas, com membros em pivôs pra animar caminhada/corrida/pulo.
 export class Character {
   readonly root = new THREE.Group()
@@ -10,8 +12,10 @@ export class Character {
   private armR = new THREE.Group()
   private head = new THREE.Group()
   private scarfTail: THREE.Mesh
+  private sword = new THREE.Group()
   private phase = 0
   private blend = 0
+  private attackT = 0
 
   constructor() {
     const skin = new THREE.MeshStandardMaterial({ color: 0xf1c7a1, roughness: 0.8 })
@@ -79,6 +83,20 @@ export class Character {
     this.scarfTail.position.y = 1.55
     this.body.add(this.scarfTail)
 
+    // espada na mão direita (filha do braço, então acompanha o balanço)
+    const steel = new THREE.MeshStandardMaterial({ color: 0xd8dde3, metalness: 0.85, roughness: 0.25 })
+    const gold = new THREE.MeshStandardMaterial({ color: 0xd4a537, metalness: 0.7, roughness: 0.3 })
+    this.sword.add(m(new THREE.CylinderGeometry(0.03, 0.035, 0.2, 8), belt, 0, 0, 0)) // cabo
+    this.sword.add(m(new THREE.SphereGeometry(0.045, 8, 6), gold, 0, -0.12, 0)) // pomo
+    this.sword.add(m(new THREE.BoxGeometry(0.26, 0.04, 0.06), gold, 0, 0.12, 0)) // guarda
+    this.sword.add(m(new THREE.BoxGeometry(0.07, 0.75, 0.02), steel, 0, 0.52, 0)) // lâmina
+    const tip = m(new THREE.ConeGeometry(0.05, 0.12, 4), steel, 0, 0.95, 0)
+    tip.scale.z = 0.3
+    this.sword.add(tip)
+    this.sword.position.set(0, -0.5, 0.04)
+    this.sword.rotation.x = 1.2 // apontando pra frente e um pouco pra cima
+    this.armR.add(this.sword)
+
     // sombra falsa sempre visível (ajuda a ler a altura no pulo)
     const blob = new THREE.Mesh(
       new THREE.CircleGeometry(0.45, 16),
@@ -91,6 +109,15 @@ export class Character {
 
   get blobShadow(): THREE.Object3D {
     return this.root.getObjectByName('blob')!
+  }
+
+  get attacking(): boolean {
+    return this.attackT > 0
+  }
+
+  // golpe em arco; ignora se já estiver no meio de um
+  attack() {
+    if (this.attackT <= 0) this.attackT = ATTACK_TIME
   }
 
   // speed: velocidade horizontal (m/s); airborne: no ar
@@ -128,5 +155,21 @@ export class Character {
     this.head.rotation.x = -this.body.rotation.x * 0.6
 
     this.scarfTail.rotation.x = 0.4 + this.blend * 0.9 + Math.sin(t * 9) * 0.12 * (0.3 + this.blend)
+
+    // ---- golpe: sobrescreve o braço direito e gira o tronco ----
+    if (this.attackT > 0) {
+      this.attackT = Math.max(0, this.attackT - dt)
+      const p = 1 - this.attackT / ATTACK_TIME // 0 → 1
+      // ergue rápido (0–25%), corta (25–60%), volta (60–100%)
+      const raise = THREE.MathUtils.smoothstep(p, 0, 0.25)
+      const cut = THREE.MathUtils.smoothstep(p, 0.25, 0.6)
+      const back = THREE.MathUtils.smoothstep(p, 0.6, 1)
+      this.armR.rotation.x = THREE.MathUtils.lerp(-2.8 * raise + 2.4 * cut, this.armR.rotation.x, back)
+      this.armR.rotation.z = THREE.MathUtils.lerp(0.5 * raise - 0.9 * cut, 0.08, back)
+      this.body.rotation.y = (0.35 * raise - 0.8 * cut) * (1 - back)
+      this.sword.rotation.x = THREE.MathUtils.lerp(1.2 - 0.9 * raise + 0.6 * cut, 1.2, back)
+    } else {
+      this.body.rotation.y = THREE.MathUtils.lerp(this.body.rotation.y, 0, dt * 10)
+    }
   }
 }

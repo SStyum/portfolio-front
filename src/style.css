@@ -358,8 +358,9 @@ a {
 }
 
 .tbtn-map {
-  grid-column: 1 / span 2;
-  justify-self: end;
+  grid-column: 2;
+  justify-self: center;
+  align-self: center;
   width: 48px;
   height: 48px;
   font-size: 1rem;

@@ -32,6 +32,8 @@ export class Input {
 
     canvas.addEventListener('mousedown', (e) => {
       if (!this.gameplay || e.button !== 0) return
+      // com o cursor já travado, o clique vira golpe de espada
+      if (document.pointerLockElement === canvas) this.pressed.add('Attack')
       this.dragging = true
       if (document.pointerLockElement !== canvas) canvas.requestPointerLock?.()?.catch?.(() => {})
     })
@@ -126,7 +128,7 @@ export class Input {
     }
   }
 
-  // botões virtuais (pulo / interagir) chamam isso
+  // botões virtuais (pulo / interagir / golpe) chamam isso
   press(code: string) {
     this.pressed.add(code)
   }
