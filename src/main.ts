@@ -6,6 +6,7 @@ import { PlayerController } from './player/controller'
 import { Hud, type Place } from './ui/hud'
 import { signBoard } from './world/buildings'
 import { SPAWN } from './world/layout'
+import { GroundMarks } from './world/marks'
 import { heightAt } from './world/terrain'
 import { buildWorld } from './world/world'
 
@@ -94,6 +95,8 @@ function start() {
   const input = new Input(renderer.domElement)
   const player = new PlayerController(camera, world.colliders)
   scene.add(player.character.root)
+  const marks = new GroundMarks(scene)
+  player.character.onGroundMark = (m) => marks.add(m)
 
   // placa "Como jogar" perto da entrada
   const helpPos = { x: 4.8, z: 60 }
@@ -226,6 +229,7 @@ function start() {
     sun.target.position.copy(pos)
 
     world.update(dt, t, pos)
+    marks.update(dt)
     hud.update({ x: pos.x, z: pos.z, facing: player.facingAngle }, t)
     renderer.render(scene, camera)
     input.endFrame()

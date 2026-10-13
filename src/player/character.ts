@@ -1,15 +1,102 @@
 import * as THREE from 'three'
+import { heightAt } from '../world/terrain'
 
-const ATTACK_TIME = 0.6 // golpe de duas mãos, mais pesado
 const DRAW_TIME = 0.35 // sacar das costas
 const SHEATHE_TIME = 0.7 // guardar nas costas
 const SHEATHE_AFTER = 9 // segundos sem atacar até guardar a espada
 const HOLD_ANGLE = 2.2 // ângulo da espada na mão em repouso (lâmina pra frente e pra baixo)
 
+const BLADE_TIP = 1.37 // distância do meio do cabo até a ponta
+const CHAIN_FROM = 0.2 // a partir daqui (fração do golpe) o próximo aperto fica guardado
+const CHAIN_AT = 0.65 // e aqui o próximo golpe do combo começa
+const COMBO_GRACE = 0.45 // segundos depois de um golpe em que ainda dá pra continuar o combo
+
 type SwordState = 'sheathed' | 'drawing' | 'drawn' | 'sheathing'
 
 const ORIGIN = new THREE.Vector3()
 const IDENTITY = new THREE.Quaternion()
+
+// Pose de ataque: rotações dos braços (x pra frente/cima, z pros lados), ângulo da espada na mão
+// e o corpo (giro, inclinação, agachada).
+interface Pose {
+  rx: number
+  rz: number
+  lx: number
+  lz: number
+  hold: number
+  twist: number
+  pitch: number
+  drop: number
+}
+
+const NEUTRAL: Pose = { rx: 0, rz: 0.08, lx: 0, lz: -0.08, hold: HOLD_ANGLE, twist: 0, pitch: 0, drop: 0 }
+const pose = (p: Partial<Pose>): Pose => ({ ...NEUTRAL, ...p })
+
+interface Move {
+  duration: number
+  // poses-chave; a primeira sai da pose em que o personagem estava
+  keys: { at: number; pose: Pose }[]
+  // golpe para quando a ponta encosta no chão (senão atravessa e deixa um sulco)
+  stopAtGround?: boolean
+}
+
+const CHOP_END = pose({ rx: -0.3, rz: -0.5, lx: -0.3, lz: 0.5, hold: 3.1, pitch: 0.3, drop: 0.06 })
+
+export const COMBO: Move[] = [
+  // 1. diagonal: de cima, do lado da espada, descendo cruzado
+  {
+    duration: 0.5,
+    keys: [
+      { at: 0.35, pose: pose({ rx: -2.5, rz: 0.5, lx: -2.3, lz: 0.9, hold: 1.7, twist: 0.5, pitch: -0.05 }) },
+      // termina com a ponta raspando o chão
+      { at: 0.6, pose: pose({ rx: -0.3, rz: -0.6, lx: -0.6, lz: -0.1, hold: 3.2, twist: -0.6, pitch: 0.32 }) },
+      { at: 1, pose: pose({ rx: -0.2, rz: -0.65, lx: -0.5, lz: 0, hold: 3.1, twist: -0.5, pitch: 0.27 }) },
+    ],
+  },
+  // 2. horizontal: varre de um lado pro outro na altura da cintura
+  {
+    duration: 0.5,
+    keys: [
+      { at: 0.3, pose: pose({ rx: -1.3, rz: -1.1, lx: -1.2, lz: -0.3, hold: 3.1, twist: -0.9 }) },
+      { at: 0.65, pose: pose({ rx: -1.3, rz: 1.0, lx: -1.2, lz: 1.4, hold: 3.1, twist: 0.9 }) },
+      { at: 1, pose: pose({ rx: -1.1, rz: 0.8, lx: -1.0, lz: 1.2, hold: 3.0, twist: 0.7 }) },
+    ],
+  },
+  // 3. pra baixo: ergue acima da cabeça e desce até a ponta tocar o chão
+  {
+    duration: 0.75,
+    stopAtGround: true,
+    keys: [
+      { at: 0.4, pose: pose({ rx: -3.0, rz: -0.55, lx: -3.0, lz: 0.55, hold: 1.6, pitch: -0.1 }) },
+      { at: 0.62, pose: CHOP_END },
+      { at: 1, pose: CHOP_END },
+    ],
+  },
+]
+
+function evalMove(move: Move, from: Pose, p: number, out: Pose) {
+  let a = from
+  let aAt = 0
+  for (const k of move.keys) {
+    if (p <= k.at) {
+      const u = THREE.MathUtils.smoothstep(p, aAt, k.at)
+      for (const f of Object.keys(out) as (keyof Pose)[]) out[f] = a[f] + (k.pose[f] - a[f]) * u
+      return
+    }
+    a = k.pose
+    aAt = k.at
+  }
+  Object.assign(out, a)
+}
+
+export interface GroundMark {
+  ax: number
+  az: number
+  bx: number
+  bz: number
+  width: number
+  strength: number
+}
 
 // Espada larga inspirada na Rebellion: lâmina grossa com sulco, guarda de caveira com asas e cabo longo.
 // Origem no meio do cabo, lâmina apontando pra +y, largura em x.
@@ -98,7 +185,26 @@ export class Character {
   private idleT = 0
   private queuedAttack = false
   private pendingSlot: THREE.Object3D | null = null
-  private attackT = 0
+  private tip = new THREE.Object3D()
+
+  // combo
+  private moveIdx = -1
+  private moveT = 0
+  private moveFrom: Pose = { ...NEUTRAL }
+  private comboNext = 0
+  private graceT = 0
+  private chainQueued = false
+  private attackW = 0
+  private curPose: Pose = { ...NEUTRAL }
+  private applied: Pose = { ...NEUTRAL }
+  private pinP: number | null = null
+  private dragA: THREE.Vector3 | null = null
+  private dragB = new THREE.Vector3()
+  private tmpA = new THREE.Vector3()
+  private tmpB = new THREE.Vector3()
+
+  // chamado quando a espada marca o chão
+  onGroundMark: (mark: GroundMark) => void = () => {}
 
   constructor() {
     const skin = new THREE.MeshStandardMaterial({ color: 0xf1c7a1, roughness: 0.8 })
@@ -208,6 +314,8 @@ export class Character {
 
     // começa guardada
     this.sword = createGreatsword(belt)
+    this.tip.position.y = BLADE_TIP
+    this.sword.add(this.tip)
     this.backSlot.add(this.sword)
 
     // sombra falsa sempre visível (ajuda a ler a altura no pulo)
@@ -225,14 +333,15 @@ export class Character {
   }
 
   get attacking(): boolean {
-    return this.attackT > 0
+    return this.moveIdx >= 0
   }
 
-  // golpe de duas mãos; com a espada nas costas, saca primeiro e golpeia em seguida
+  // combo de três golpes; com a espada nas costas, saca primeiro e golpeia em seguida
   attack() {
     this.idleT = 0
     if (this.swordState === 'drawn') {
-      if (this.attackT <= 0) this.attackT = ATTACK_TIME
+      if (this.moveIdx < 0) this.startMove(this.graceT > 0 ? this.comboNext : 0)
+      else if (this.moveT / COMBO[this.moveIdx].duration >= CHAIN_FROM) this.chainQueued = true
     } else if (this.swordState === 'sheathed') {
       this.startTransition('drawing')
       this.queuedAttack = true
@@ -249,7 +358,7 @@ export class Character {
   // avança a máquina de estados da espada; devolve o quanto o braço direito deve alcançar as costas (0–1)
   private updateSword(dt: number): number {
     if (this.swordState === 'drawn') {
-      if (this.attackT <= 0) {
+      if (this.moveIdx < 0) {
         this.idleT += dt
         if (this.idleT >= SHEATHE_AFTER) this.startTransition('sheathing')
       }
@@ -272,7 +381,7 @@ export class Character {
       this.queuedAttack = false
       if (drawing) {
         this.swordState = 'drawn'
-        if (queued) this.attackT = ATTACK_TIME
+        if (queued) this.startMove(0)
       } else {
         this.swordState = 'sheathed'
         // apertou golpe enquanto guardava: saca de novo
@@ -324,31 +433,6 @@ export class Character {
       this.armR.rotation.z = THREE.MathUtils.lerp(this.armR.rotation.z, -0.2, reach)
     }
 
-    // ---- golpe vertical de duas mãos: ergue acima da cabeça, desce cortando, volta ----
-    let holdAngle = HOLD_ANGLE
-    let chop = 0
-    if (this.attackT > 0) {
-      this.attackT = Math.max(0, this.attackT - dt)
-      const p = 1 - this.attackT / ATTACK_TIME // 0 → 1
-      const raise = THREE.MathUtils.smoothstep(p, 0, 0.3)
-      const cut = THREE.MathUtils.smoothstep(p, 0.3, 0.5)
-      const back = THREE.MathUtils.smoothstep(p, 0.6, 1)
-      const armX = -3.0 * raise + 2.1 * cut // acima da cabeça → à frente e pra baixo
-      const grip = 0.55 * raise // mãos se juntam no cabo
-      this.armR.rotation.x = THREE.MathUtils.lerp(armX, this.armR.rotation.x, back)
-      this.armL.rotation.x = THREE.MathUtils.lerp(armX, this.armL.rotation.x, back)
-      this.armR.rotation.z = THREE.MathUtils.lerp(-grip, this.armR.rotation.z, back)
-      this.armL.rotation.z = THREE.MathUtils.lerp(grip, this.armL.rotation.z, back)
-      // lâmina aponta pra trás na preparação e segue o braço no corte
-      holdAngle = THREE.MathUtils.lerp(HOLD_ANGLE - 0.6 * raise + 1.3 * cut, HOLD_ANGLE, back)
-      chop = cut * (1 - back)
-    }
-    this.handSlot.rotation.x = holdAngle
-    // corpo acompanha o corte: inclina e abaixa um pouco
-    this.body.rotation.x = this.lean + 0.25 * chop
-    this.body.position.y = this.bob - 0.06 * chop
-    this.head.rotation.x = -this.body.rotation.x * 0.6
-
     if (this.pendingSlot) {
       this.pendingSlot.attach(this.sword) // mantém a posição no mundo; o deslize abaixo leva até o encaixe
       this.pendingSlot = null
@@ -356,5 +440,164 @@ export class Character {
     const k = Math.min(1, dt * 14)
     this.sword.position.lerp(ORIGIN, k)
     this.sword.quaternion.slerp(IDENTITY, k)
+
+    this.updateCombo(dt)
+  }
+
+  private startMove(i: number) {
+    this.flushDrag()
+    this.moveIdx = i
+    this.moveT = 0
+    this.moveFrom = { ...this.applied }
+    this.attackW = 1
+    this.pinP = null
+    this.chainQueued = false
+  }
+
+  private updateCombo(dt: number) {
+    const walk = {
+      rx: this.armR.rotation.x,
+      rz: this.armR.rotation.z,
+      lx: this.armL.rotation.x,
+      lz: this.armL.rotation.z,
+    }
+    this.graceT = Math.max(0, this.graceT - dt)
+
+    let prevP = 0
+    if (this.moveIdx >= 0) {
+      prevP = this.moveT / COMBO[this.moveIdx].duration
+      this.moveT += dt
+      const raw = this.moveT / COMBO[this.moveIdx].duration
+      if (this.chainQueued && this.moveIdx < COMBO.length - 1 && raw >= CHAIN_AT) {
+        this.startMove(this.moveIdx + 1)
+        prevP = 0
+      } else if (raw >= 1) {
+        const idx = this.moveIdx
+        const last = idx === COMBO.length - 1
+        const again = this.chainQueued && last
+        this.flushDrag()
+        this.moveIdx = -1
+        // pouco tempo pra continuar o combo do golpe seguinte; depois do último, recomeça
+        this.comboNext = last ? 0 : idx + 1
+        this.graceT = last ? 0 : COMBO_GRACE
+        if (again) this.startMove(0)
+      }
+    }
+
+    if (this.moveIdx < 0) {
+      // fora do golpe: volta suave pra pose normal
+      this.attackW = THREE.MathUtils.lerp(this.attackW, 0, Math.min(1, dt * 6))
+      this.applyPose(this.curPose, walk)
+      return
+    }
+
+    const move = COMBO[this.moveIdx]
+    let p = Math.min(1, this.moveT / move.duration)
+    if (this.pinP !== null) p = Math.min(p, this.pinP)
+    evalMove(move, this.moveFrom, p, this.curPose)
+    this.applyPose(this.curPose, walk)
+
+    // só testa o chão depois da preparação do golpe
+    if (p < move.keys[0].at) return
+    const clearance = this.tipClearance()
+
+    if (move.stopAtGround) {
+      if (this.pinP !== null || clearance >= 0.02) return
+      // acha o instante exato em que a ponta encosta e congela ali
+      let lo = Math.max(prevP, move.keys[0].at)
+      let hi = p
+      for (let i = 0; i < 8; i++) {
+        const mid = (lo + hi) / 2
+        evalMove(move, this.moveFrom, mid, this.curPose)
+        this.applyPose(this.curPose, walk)
+        if (this.tipClearance() < 0.02) hi = mid
+        else lo = mid
+      }
+      this.pinP = lo
+      evalMove(move, this.moveFrom, lo, this.curPose)
+      this.applyPose(this.curPose, walk)
+
+      // marca leve de contato, ao longo da lâmina
+      const tip = this.tip.getWorldPosition(this.tmpA)
+      const hilt = this.sword.getWorldPosition(this.tmpB)
+      const dir = new THREE.Vector2(tip.x - hilt.x, tip.z - hilt.z)
+      if (dir.lengthSq() < 1e-4) dir.set(Math.sin(this.root.rotation.y), Math.cos(this.root.rotation.y))
+      dir.normalize()
+      this.onGroundMark({
+        ax: tip.x - dir.x * 0.5,
+        az: tip.z - dir.y * 0.5,
+        bx: tip.x + dir.x * 0.05,
+        bz: tip.z + dir.y * 0.05,
+        width: 0.12,
+        strength: 0.45,
+      })
+      return
+    }
+
+    // golpes que atravessam o chão: guarda por onde a ponta passou e vira um sulco
+    if (clearance < 0) {
+      const tip = this.tip.getWorldPosition(this.tmpA)
+      if (!this.dragA) this.dragA = tip.clone()
+      this.dragB.copy(tip)
+    } else {
+      this.flushDrag()
+    }
+  }
+
+  private flushDrag() {
+    if (!this.dragA) return
+    const a = this.dragA
+    const b = this.dragB
+    this.dragA = null
+    // sulco curto demais (só encostou): estica um pouco ao longo do movimento ou da lâmina
+    let dx = b.x - a.x
+    let dz = b.z - a.z
+    let len = Math.hypot(dx, dz)
+    if (len < 1e-3) {
+      dx = Math.sin(this.root.rotation.y)
+      dz = Math.cos(this.root.rotation.y)
+      len = 1
+    }
+    const ext = Math.max(0, 0.35 - Math.hypot(b.x - a.x, b.z - a.z)) / 2
+    const ux = dx / len
+    const uz = dz / len
+    this.onGroundMark({
+      ax: a.x - ux * ext,
+      az: a.z - uz * ext,
+      bx: b.x + ux * ext,
+      bz: b.z + uz * ext,
+      width: 0.16,
+      strength: 0.8,
+    })
+  }
+
+  // altura da ponta da lâmina acima do terreno (negativa = enterrada)
+  private tipClearance(): number {
+    const tip = this.tip.getWorldPosition(this.tmpA)
+    return tip.y - heightAt(tip.x, tip.z)
+  }
+
+  private applyPose(pose: Pose, walk: { rx: number; rz: number; lx: number; lz: number }) {
+    const w = this.attackW
+    const lerp = THREE.MathUtils.lerp
+    this.armR.rotation.x = lerp(walk.rx, pose.rx, w)
+    this.armR.rotation.z = lerp(walk.rz, pose.rz, w)
+    this.armL.rotation.x = lerp(walk.lx, pose.lx, w)
+    this.armL.rotation.z = lerp(walk.lz, pose.lz, w)
+    this.handSlot.rotation.x = lerp(HOLD_ANGLE, pose.hold, w)
+    this.body.rotation.y = pose.twist * w
+    this.body.rotation.x = this.lean + pose.pitch * w
+    this.body.position.y = this.bob - pose.drop * w
+    this.head.rotation.x = -this.body.rotation.x * 0.6
+
+    const a = this.applied
+    a.rx = this.armR.rotation.x
+    a.rz = this.armR.rotation.z
+    a.lx = this.armL.rotation.x
+    a.lz = this.armL.rotation.z
+    a.hold = this.handSlot.rotation.x
+    a.twist = this.body.rotation.y
+    a.pitch = pose.pitch * w
+    a.drop = pose.drop * w
   }
 }

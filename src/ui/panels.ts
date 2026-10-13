@@ -246,7 +246,7 @@ const ajuda: Renderer = (body) => {
       <kbd>W A S D</kbd><span>andar</span>
       <kbd>Shift</kbd><span>correr</span>
       <kbd>Espaço</kbd><span>pular</span>
-      <kbd>F / Clique</kbd><span>golpe de espada</span>
+      <kbd>F / Clique</kbd><span>combo de espada (aperte até 3x)</span>
       <kbd>Mouse</kbd><span>girar a câmera (clique no jogo pra travar o cursor)</span>
       <kbd>Roda</kbd><span>zoom</span>
       <kbd>E</kbd><span>entrar / interagir</span>

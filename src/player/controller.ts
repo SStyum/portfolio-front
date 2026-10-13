@@ -67,6 +67,7 @@ export class PlayerController {
     const inWater = heightAt(this.position.x, this.position.z) < POND.water - 0.4
     let maxSpeed = input.sprint ? RUN : WALK
     if (inWater) maxSpeed *= 0.55
+    if (this.character.attacking) maxSpeed *= 0.35 // golpeando: anda devagar
     const target = wish.multiplyScalar(maxSpeed)
     const accel = this.onGround ? 14 : 4
     this.velocity.x += (target.x - this.velocity.x) * Math.min(1, accel * dt)
