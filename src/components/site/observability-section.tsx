@@ -106,7 +106,7 @@ export function ObservabilitySection() {
           ) : (
             <div className="relative overflow-hidden rounded-2xl border">
               {/* prévia borrada: dá vontade sem entregar nada */}
-              <div aria-hidden className="pointer-events-none select-none p-4 opacity-60 blur-[6px]">
+              <div aria-hidden className="pointer-events-none max-h-[520px] select-none overflow-hidden p-4 opacity-60 blur-[6px]">
                 <GrafanaDashboard data={PREVIEW} />
               </div>
               <div className="absolute inset-0 grid place-items-center bg-gradient-to-b from-background/30 via-background/70 to-background/95 p-4">
