@@ -28,6 +28,12 @@ export class DayNight {
     private renderer: THREE.WebGLRenderer,
   ) {
     this.sky.scale.setScalar(500)
+    // o disco do sol sai com brilho ~10 milhões: passa do máximo da imagem HDR (65504) e vira "infinito",
+    // que o bloom espalha pela tela inteira (tela preta ao olhar pro sol). Limita aqui na origem.
+    this.sky.material.fragmentShader = this.sky.material.fragmentShader.replace(
+      '#include <tonemapping_fragment>',
+      'gl_FragColor.rgb = min(gl_FragColor.rgb, vec3(16.0));\n#include <tonemapping_fragment>',
+    )
     const u = this.sky.material.uniforms
     u.turbidity.value = 7
     u.rayleigh.value = 1.6

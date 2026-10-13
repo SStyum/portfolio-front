@@ -25,8 +25,11 @@ export function createPostFX(renderer: THREE.WebGLRenderer, scene: THREE.Scene, 
       fragmentShader: `uniform sampler2D tDiffuse; varying vec2 vUv;
         void main() {
           vec4 c = texture2D(tDiffuse, vUv);
-          if (any(isnan(c)) || any(isinf(c))) c = vec4(0.0, 0.0, 0.0, 1.0);
-          gl_FragColor = vec4(clamp(c.rgb, 0.0, 40.0), c.a);
+          // clamp primeiro: funciona em qualquer placa (isnan/isinf podem sumir na otimização do driver)
+          c.rgb = clamp(c.rgb, 0.0, 40.0);
+          // NaN é o único valor diferente de si mesmo
+          if (c.r != c.r || c.g != c.g || c.b != c.b) c.rgb = vec3(0.0);
+          gl_FragColor = vec4(c.rgb, 1.0);
         }`,
     }),
   )

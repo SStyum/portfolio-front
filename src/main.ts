@@ -164,9 +164,12 @@ function start() {
   // vindo do site (?setor=projetos): começa em frente àquele lugar
   const target = places.find((p) => p.id === params.get('setor'))
   if (target) player.teleport(target.door.x, target.door.z, target.facing)
-  // ?debug&pos=x,z,yaw: começa num ponto qualquer (pra testar)
+  // ?debug&pos=x,z,yaw[,pitch]: começa num ponto qualquer, com a câmera inclinada (pra testar)
   const pos = params.get('pos')?.split(',').map(Number)
-  if (params.has('debug') && pos && pos.length >= 2 && pos.every(Number.isFinite)) player.teleport(pos[0], pos[1], pos[2] ?? 0)
+  if (params.has('debug') && pos && pos.length >= 2 && pos.every(Number.isFinite)) {
+    player.teleport(pos[0], pos[1], pos[2] ?? 0)
+    if (pos[3] !== undefined) player.camPitch = pos[3]
+  }
   // ?debug&hora=21: começa nesse horário
   const hour = Number(params.get('hora'))
   if (params.has('debug') && params.has('hora') && Number.isFinite(hour)) world.dayNight.hours = hour % 24
