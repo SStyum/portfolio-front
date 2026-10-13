@@ -44,6 +44,55 @@ function gashTexture(): THREE.CanvasTexture {
   return tex
 }
 
+// Cratera: centro afundado escuro, rachaduras irradiando e terra revirada na borda
+function craterTexture(): THREE.CanvasTexture {
+  const size = 256
+  const canvas = document.createElement('canvas')
+  canvas.width = size
+  canvas.height = size
+  const ctx = canvas.getContext('2d')!
+  const c = size / 2
+
+  const ring = ctx.createRadialGradient(c, c, 10, c, c, c)
+  ring.addColorStop(0, 'rgba(22, 14, 8, 0.95)')
+  ring.addColorStop(0.35, 'rgba(48, 32, 20, 0.85)')
+  ring.addColorStop(0.62, 'rgba(110, 82, 52, 0.55)')
+  ring.addColorStop(0.8, 'rgba(122, 94, 62, 0.25)')
+  ring.addColorStop(1, 'rgba(122, 94, 62, 0)')
+  ctx.fillStyle = ring
+  ctx.fillRect(0, 0, size, size)
+
+  // rachaduras: linhas quebradas saindo do centro, com galhos
+  ctx.strokeStyle = 'rgba(18, 11, 6, 0.9)'
+  ctx.lineCap = 'round'
+  const crack = (x: number, y: number, a: number, len: number, w: number, depth: number) => {
+    ctx.lineWidth = w
+    ctx.beginPath()
+    ctx.moveTo(x, y)
+    const steps = 6
+    for (let i = 0; i < steps; i++) {
+      a += (Math.random() - 0.5) * 0.7
+      x += Math.cos(a) * (len / steps)
+      y += Math.sin(a) * (len / steps)
+      ctx.lineTo(x, y)
+      if (depth > 0 && Math.random() < 0.25) {
+        ctx.stroke()
+        crack(x, y, a + (Math.random() < 0.5 ? -0.8 : 0.8), len * 0.45, w * 0.6, depth - 1)
+        ctx.lineWidth = w
+        ctx.beginPath()
+        ctx.moveTo(x, y)
+      }
+    }
+    ctx.stroke()
+  }
+  const n = 9
+  for (let i = 0; i < n; i++) crack(c, c, (i / n) * Math.PI * 2 + Math.random() * 0.4, c * (0.6 + Math.random() * 0.35), 5, 2)
+
+  const tex = new THREE.CanvasTexture(canvas)
+  tex.colorSpace = THREE.SRGBColorSpace
+  return tex
+}
+
 interface Mark {
   mesh: THREE.Mesh<THREE.BufferGeometry, THREE.MeshStandardMaterial>
   age: number
@@ -54,6 +103,7 @@ interface Mark {
 export class GroundMarks {
   private marks: Mark[] = []
   private texture = gashTexture()
+  private craterTex = craterTexture()
 
   constructor(private scene: THREE.Scene) {}
 
@@ -80,8 +130,12 @@ export class GroundMarks {
     geo.computeVertexNormals()
     geo.computeBoundingSphere()
 
+    this.addMesh(geo, this.texture, strength)
+  }
+
+  private addMesh(geo: THREE.BufferGeometry, map: THREE.Texture, strength: number) {
     const mat = new THREE.MeshStandardMaterial({
-      map: this.texture,
+      map,
       transparent: true,
       opacity: strength,
       depthWrite: false,
@@ -96,6 +150,27 @@ export class GroundMarks {
     this.marks.push({ mesh, age: 0, strength })
 
     while (this.marks.length > MAX_MARKS) this.remove(this.marks[0])
+  }
+
+  // cratera redonda do golpe aéreo
+  crater(x: number, z: number, radius: number) {
+    if (heightAt(x, z) < POND.water + 0.05) return
+    const geo = new THREE.PlaneGeometry(radius * 2, radius * 2, 10, 10)
+    const pos = geo.attributes.position
+    const spin = Math.random() * Math.PI * 2
+    const cos = Math.cos(spin)
+    const sin = Math.sin(spin)
+    for (let i = 0; i < pos.count; i++) {
+      const u = pos.getX(i)
+      const v = pos.getY(i)
+      // v invertido mantém a face virada pra cima (mesma ideia do sulco)
+      const px = x + u * cos - v * sin
+      const pz = z - u * sin - v * cos
+      pos.setXYZ(i, px, heightAt(px, pz) + 0.035, pz)
+    }
+    geo.computeVertexNormals()
+    geo.computeBoundingSphere()
+    this.addMesh(geo, this.craterTex, 0.95)
   }
 
   update(dt: number) {

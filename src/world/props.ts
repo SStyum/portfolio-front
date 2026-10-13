@@ -296,3 +296,157 @@ export class Petals {
     attr.needsUpdate = true
   }
 }
+
+// ---------- floresta instanciada (centenas de árvores em poucas chamadas de desenho) ----------
+
+export interface ForestTree {
+  x: number
+  z: number
+  kind: 'cherry' | 'maple' | 'green' | 'pine'
+  scale: number
+  seed: number
+}
+
+const leafColors: Record<'cherry' | 'maple' | 'green', number[]> = {
+  cherry: [0xf6b8cf, 0xf29fbd, 0xfcd3e1],
+  maple: [0xe76f51, 0xf4a261, 0xd9573b],
+  green: [0x6a994e, 0x588b3f, 0x7db15a],
+}
+const pineColors = [0x2f5d3a, 0x3b6e45]
+
+// Mesmas formas de createTree/createPine, mas cada parte vira uma instância
+export function createForest(trees: ForestTree[]): THREE.Group {
+  const group = new THREE.Group()
+  const broad = trees.filter((t) => t.kind !== 'pine')
+  const pines = trees.filter((t) => t.kind === 'pine')
+
+  const white = (flat = true) => new THREE.MeshStandardMaterial({ color: 0xffffff, roughness: 0.9, flatShading: flat })
+  const trunks = new THREE.InstancedMesh(trunkGeo, trunkMat, trees.length)
+  const leaves = new THREE.InstancedMesh(leafGeo, white(), broad.length * 5)
+  const cones = pineCones.map((geo) => new THREE.InstancedMesh(geo, white(), pines.length))
+
+  const tree = new THREE.Matrix4()
+  const part = new THREE.Matrix4()
+  const q = new THREE.Quaternion()
+  const e = new THREE.Euler()
+  const v = new THREE.Vector3()
+  const sc = new THREE.Vector3()
+  const color = new THREE.Color()
+  const place = (t: ForestTree) =>
+    tree.compose(v.set(t.x, heightAt(t.x, t.z) - 0.1, t.z), q.setFromEuler(e.set(0, t.seed * Math.PI * 2, 0)), sc.setScalar(t.scale))
+
+  let ti = 0
+  let li = 0
+  for (const t of broad) {
+    place(t)
+    trunks.setMatrixAt(ti++, part.compose(v.set(0, 1.5, 0), q.identity(), sc.setScalar(1)).premultiply(tree))
+    const cols = leafColors[t.kind as 'cherry' | 'maple' | 'green']
+    for (let i = 0; i < 5; i++) {
+      const a = (i / 5) * Math.PI * 2 + t.seed * 6
+      const r = i === 0 ? 0 : 1.1
+      const s = i === 0 ? 1.9 : 1.3 + ((t.seed * 7 + i) % 1) * 0.4
+      part.compose(
+        v.set(Math.cos(a) * r, 3.6 + (i === 0 ? 0.6 : (i % 2) * 0.5), Math.sin(a) * r),
+        q.setFromEuler(e.set(t.seed * 3, i, t.seed)),
+        sc.setScalar(s),
+      )
+      leaves.setMatrixAt(li, part.premultiply(tree))
+      leaves.setColorAt(li++, color.setHex(cols[i % cols.length]))
+    }
+  }
+  pines.forEach((t, pi) => {
+    place(t)
+    trunks.setMatrixAt(ti++, part.compose(v.set(0, 1.2, 0), q.identity(), sc.setScalar(1)).premultiply(tree))
+    cones.forEach((c, i) => {
+      c.setMatrixAt(pi, part.compose(v.set(0, 3 + i * 1.5, 0), q.identity(), sc.setScalar(1)).premultiply(tree))
+      c.setColorAt(pi, color.setHex(pineColors[(i + Math.floor(t.seed * 10)) % 2]))
+    })
+  })
+
+  for (const m of [trunks, leaves, ...cones]) {
+    m.castShadow = true
+    m.receiveShadow = true
+    m.computeBoundingSphere()
+    group.add(m)
+  }
+  return group
+}
+
+// ---------- placa de direção ----------
+
+export interface SignArm {
+  label: string
+  detail?: string // ex.: "32 m"
+  yaw: number // direção no mundo pra onde a seta aponta (0 = +z)
+  color: number
+}
+
+const signWood = new THREE.MeshStandardMaterial({ color: 0x6b4a2e, roughness: 0.95, flatShading: true })
+const signPost = new THREE.MeshStandardMaterial({ color: 0x4a3220, roughness: 1 })
+
+function armTexture(arm: SignArm): THREE.CanvasTexture {
+  const canvas = document.createElement('canvas')
+  canvas.width = 512
+  canvas.height = 96
+  const ctx = canvas.getContext('2d')!
+  const hexColor = '#' + arm.color.toString(16).padStart(6, '0')
+  ctx.fillStyle = hexColor
+  ctx.beginPath()
+  ctx.arc(34, 48, 14, 0, Math.PI * 2)
+  ctx.fill()
+  ctx.fillStyle = '#f7ecd6'
+  ctx.font = '700 44px Cinzel, Georgia, serif'
+  ctx.textBaseline = 'middle'
+  ctx.fillText(arm.label, 62, 50, arm.detail ? 330 : 430)
+  if (arm.detail) {
+    ctx.fillStyle = '#e8c88c'
+    ctx.font = '600 32px Nunito, sans-serif'
+    ctx.textAlign = 'right'
+    ctx.fillText(arm.detail, 496, 52)
+  }
+  const tex = new THREE.CanvasTexture(canvas)
+  tex.colorSpace = THREE.SRGBColorSpace
+  tex.anisotropy = 4
+  return tex
+}
+
+// Poste com setas de madeira, cada uma apontando pra um lugar, com nome e distância
+export function createSignpost(arms: SignArm[]): THREE.Group {
+  const g = new THREE.Group()
+  const height = 2.3 + arms.length * 0.12
+  const post = new THREE.Mesh(new THREE.CylinderGeometry(0.09, 0.11, height, 6), signPost)
+  post.position.y = height / 2
+  g.add(post)
+  const cap = new THREE.Mesh(new THREE.ConeGeometry(0.16, 0.2, 6), signPost)
+  cap.position.y = height + 0.1
+  g.add(cap)
+
+  const shape = new THREE.Shape()
+  shape.moveTo(0, -0.17)
+  shape.lineTo(1.75, -0.17)
+  shape.lineTo(2.0, 0)
+  shape.lineTo(1.75, 0.17)
+  shape.lineTo(0, 0.17)
+  shape.closePath()
+  const plank = new THREE.ExtrudeGeometry(shape, { depth: 0.06, bevelEnabled: false })
+  plank.translate(0.05, 0, -0.03)
+  const textGeo = new THREE.PlaneGeometry(1.7, 0.32)
+
+  arms.forEach((arm, i) => {
+    const holder = new THREE.Group()
+    holder.position.y = height - 0.3 - i * 0.42
+    // seta ao longo do +x local apontando pra yaw no mundo
+    holder.rotation.y = arm.yaw - Math.PI / 2
+    holder.add(new THREE.Mesh(plank, signWood))
+    const mat = new THREE.MeshStandardMaterial({ map: armTexture(arm), transparent: true, roughness: 0.9 })
+    const front = new THREE.Mesh(textGeo, mat)
+    front.position.set(0.95, 0, 0.032)
+    holder.add(front)
+    const back = new THREE.Mesh(textGeo, mat)
+    back.position.set(0.95, 0, -0.032)
+    back.rotation.y = Math.PI
+    holder.add(back)
+    g.add(holder)
+  })
+  return shadowed(g)
+}

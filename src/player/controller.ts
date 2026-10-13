@@ -10,6 +10,9 @@ const RUN = 9.5
 const JUMP = 8.5
 const GRAVITY = 24
 const RADIUS = 0.4
+const MAX_SLOPE = 1.25 // subida máxima (≈51°): mais que isso é paredão de montanha
+const AIR_HOP = 6.5 // impulso pra cima no começo do golpe aéreo
+const DIVE_SPEED = 30 // mergulho do golpe aéreo
 
 // Movimento em terceira pessoa relativo à câmera + câmera orbital com colisão simples
 export class PlayerController {
@@ -25,6 +28,8 @@ export class PlayerController {
   private camDist = 7
   private camDistTarget = 7
   private camTarget = new THREE.Vector3()
+  private trauma = 0 // tremor de câmera (0–1), some sozinho
+  private time = 0
 
   constructor(
     private camera: THREE.PerspectiveCamera,
@@ -33,6 +38,11 @@ export class PlayerController {
 
   get facingAngle(): number {
     return this.facing
+  }
+
+  // tremor de câmera nos impactos
+  shake(amount: number) {
+    this.trauma = Math.min(1, this.trauma + amount)
   }
 
   get speed(): number {
@@ -65,38 +75,91 @@ export class PlayerController {
     const wish = fwd.multiplyScalar(axis.y).add(right.multiplyScalar(axis.x))
 
     const inWater = heightAt(this.position.x, this.position.z) < POND.water - 0.4
+    const air = this.character.airPhase
     let maxSpeed = input.sprint ? RUN : WALK
     if (inWater) maxSpeed *= 0.55
     if (this.character.attacking) maxSpeed *= 0.35 // golpeando: anda devagar
+    if (air === 'slam') maxSpeed = 0 // preso no impacto
     const target = wish.multiplyScalar(maxSpeed)
+    // cada corte dá um passo pra frente
+    const facingX = Math.sin(this.facing)
+    const facingZ = Math.cos(this.facing)
+    const lunge = this.character.lungeSpeed
+    target.x += facingX * lunge
+    target.z += facingZ * lunge
     const accel = this.onGround ? 14 : 4
     this.velocity.x += (target.x - this.velocity.x) * Math.min(1, accel * dt)
     this.velocity.z += (target.z - this.velocity.z) * Math.min(1, accel * dt)
+    if (air === 'rise') this.velocity.multiplyScalar(1 - Math.min(1, dt * 6)) // quase para no ar
+    if (air === 'dive') this.velocity.set(facingX * 5, 0, facingZ * 5)
 
+    const prevX = this.position.x
+    const prevZ = this.position.z
     this.position.x += this.velocity.x * dt
     this.position.z += this.velocity.z * dt
 
-    // colisão com construções/árvores e com o limite da vila
+    // colisão com construções/árvores
     this.colliders.resolve(this.position, RADIUS)
+
+    // ladeira íngreme demais não dá pra subir: tenta escorregar por um eixo só, senão volta
+    if (this.onGround) {
+      const h0 = heightAt(prevX, prevZ)
+      const tooSteep = (x: number, z: number) => {
+        const d = Math.hypot(x - prevX, z - prevZ)
+        return d > 1e-4 && (heightAt(x, z) - h0) / d > MAX_SLOPE
+      }
+      if (tooSteep(this.position.x, this.position.z)) {
+        if (!tooSteep(this.position.x, prevZ)) {
+          this.position.z = prevZ
+          this.velocity.z = 0
+        } else if (!tooSteep(prevX, this.position.z)) {
+          this.position.x = prevX
+          this.velocity.x = 0
+        } else {
+          this.position.x = prevX
+          this.position.z = prevZ
+          this.velocity.x = this.velocity.z = 0
+        }
+      }
+    }
+    else if (
+      (heightAt(this.position.x, this.position.z) - heightAt(prevX, prevZ)) /
+        Math.max(1e-4, Math.hypot(this.position.x - prevX, this.position.z - prevZ)) >
+      MAX_SLOPE
+    ) {
+      // no ar também não sobe paredão (senão dava pra escalar montanha pulando)
+      this.position.x = prevX
+      this.position.z = prevZ
+      this.velocity.x = this.velocity.z = 0
+    }
     const r = Math.hypot(this.position.x, this.position.z)
     if (r > WALK_RADIUS) {
       this.position.x *= WALK_RADIUS / r
       this.position.z *= WALK_RADIUS / r
     }
 
-    // ---- pulo e gravidade ----
+    // ---- pulo, golpes e gravidade ----
     const ground = heightAt(this.position.x, this.position.z)
-    if (this.onGround && input.gameplay && input.consume('Space')) {
+    if (this.onGround && !air && input.gameplay && input.consume('Space')) {
       this.velY = JUMP
       this.onGround = false
     }
-    if (input.gameplay && (input.consume('KeyF') || input.consume('Attack'))) this.character.attack()
-    this.velY -= GRAVITY * dt
+    if (input.gameplay && (input.consume('KeyF') || input.consume('Attack'))) {
+      // no ar e com altura: Helm Breaker; no chão: combo
+      if (!this.onGround && this.position.y - ground > 0.9 && this.character.airAttack()) this.velY = AIR_HOP
+      else this.character.attack()
+    }
+    if (air === 'dive') this.velY = -DIVE_SPEED
+    else this.velY -= GRAVITY * (air === 'rise' ? 0.35 : 1) * dt
     this.position.y += this.velY * dt
     if (this.position.y <= ground) {
       this.position.y = ground
       this.velY = 0
       this.onGround = true
+      if (air === 'rise' || air === 'dive') {
+        this.character.root.position.copy(this.position)
+        this.character.land()
+      }
     } else if (this.onGround && this.position.y - ground < 0.6 && this.velY <= 0) {
       // descendo ladeira: gruda no chão
       this.position.y = ground
@@ -125,6 +188,7 @@ export class PlayerController {
   }
 
   private updateCamera(dt: number) {
+    this.time += dt
     const desiredTarget = this.position.clone().add(new THREE.Vector3(0, 1.5, 0))
     this.camTarget.lerp(desiredTarget, Math.min(1, dt * 12))
 
@@ -152,6 +216,17 @@ export class PlayerController {
     const minY = heightAt(this.camera.position.x, this.camera.position.z) + 0.4
     if (this.camera.position.y < minY) this.camera.position.y = minY
     this.camera.lookAt(this.camTarget)
+
+    // tremor: proporcional ao quadrado do trauma, suave (senos de frequências diferentes)
+    if (this.trauma > 0) {
+      const mag = this.trauma * this.trauma * 0.35
+      const t = this.time
+      this.camera.position.x += Math.sin(t * 47) * mag
+      this.camera.position.y += Math.sin(t * 53 + 1) * mag
+      this.camera.position.z += Math.sin(t * 59 + 2) * mag
+      this.camera.rotation.z += Math.sin(t * 41 + 3) * mag * 0.08
+      this.trauma = Math.max(0, this.trauma - dt * 1.6)
+    }
   }
 
   private insideBuilding(p: THREE.Vector3): boolean {

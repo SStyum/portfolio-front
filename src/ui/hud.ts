@@ -1,5 +1,5 @@
 import type { Colliders } from '../world/colliders'
-import { POND, distToPath, PATH_WIDTH } from '../world/layout'
+import { POND, WORLD_RADIUS, distToPath, PATH_WIDTH } from '../world/layout'
 import { heightAt } from '../world/terrain'
 import { PANELS, esc, type PanelId } from './panels'
 
@@ -18,8 +18,9 @@ export interface Place {
 
 const hex = (c: number) => '#' + c.toString(16).padStart(6, '0')
 
-// Extensão do mundo desenhada nos mapas
-const EXTENT = 78
+// Extensão do mundo desenhada no mapa grande; o minimapa mostra só a região em volta do jogador
+const EXTENT = WORLD_RADIUS + 15
+const MINI_EXTENT = 55
 
 export class Hud {
   private root = document.createElement('div')
@@ -48,7 +49,7 @@ export class Hud {
       <div class="banner hidden"><span class="banner-sub"></span><span class="banner-title"></span><span class="banner-line"></span></div>
       <div class="minimap-wrap"><canvas class="minimap" width="200" height="200"></canvas><span class="minimap-n">N</span></div>
       <a class="to-site" href="/home">Ver como site</a>
-      <div class="hint"><kbd>WASD</kbd> andar · <kbd>Shift</kbd> correr · <kbd>Espaço</kbd> pular · <kbd>F</kbd> combo · <kbd>E</kbd> entrar · <kbd>M</kbd> mapa</div>
+      <div class="hint"><kbd>WASD</kbd> andar · <kbd>Shift</kbd> correr · <kbd>Espaço</kbd> pular · <kbd>F</kbd> combo · <kbd>Espaço+F</kbd> aéreo · <kbd>E</kbd> entrar · <kbd>M</kbd> mapa</div>
       <div class="touch-buttons">
         <button class="tbtn tbtn-e">E</button>
         <button class="tbtn tbtn-jump">⤒</button>
@@ -215,7 +216,7 @@ export class Hud {
 
   // Desenha o mapa base (uma vez) amostrando o terreno
   private renderMapBackground(colliders: Colliders): HTMLCanvasElement {
-    const size = 280
+    const size = 480
     const c = document.createElement('canvas')
     c.width = size
     c.height = size
@@ -258,7 +259,7 @@ export class Hud {
       } else if (col.r > 0.5) {
         ctx.fillStyle = 'rgba(52, 90, 48, 0.75)'
         ctx.beginPath()
-        ctx.arc((col.x + EXTENT) * s, (col.z + EXTENT) * s, Math.max(1.5, col.r * s * 2.2), 0, Math.PI * 2)
+        ctx.arc((col.x + EXTENT) * s, (col.z + EXTENT) * s, Math.max(1.2, Math.min(3, col.r * s * 2.2)), 0, Math.PI * 2)
         ctx.fill()
       }
     }
@@ -273,19 +274,28 @@ export class Hud {
   private drawMap(canvas: HTMLCanvasElement, player: { x: number; z: number; facing: number }, big: boolean, t: number) {
     const ctx = canvas.getContext('2d')!
     const W = canvas.width
-    const s = W / (EXTENT * 2)
+    // mapa grande: mundo inteiro; minimapa: janela centrada no jogador
+    const ext = big ? EXTENT : MINI_EXTENT
+    const cx = big ? 0 : player.x
+    const cz = big ? 0 : player.z
+    const s = W / (ext * 2)
+    const toX = (x: number) => (x - cx + ext) * s
+    const toZ = (z: number) => (z - cz + ext) * s
     ctx.clearRect(0, 0, W, W)
     ctx.save()
     if (!big) {
       ctx.beginPath()
       ctx.arc(W / 2, W / 2, W / 2, 0, Math.PI * 2)
       ctx.clip()
+      ctx.fillStyle = '#8a7f74'
+      ctx.fillRect(0, 0, W, W)
     }
-    ctx.drawImage(this.mapBg, 0, 0, W, W)
+    const bgScale = this.mapBg.width / (EXTENT * 2)
+    ctx.drawImage(this.mapBg, (cx - ext + EXTENT) * bgScale, (cz - ext + EXTENT) * bgScale, ext * 2 * bgScale, ext * 2 * bgScale, 0, 0, W, W)
 
     for (const p of this.places) {
-      const px = (p.x + EXTENT) * s
-      const pz = (p.z + EXTENT) * s
+      const px = toX(p.x)
+      const pz = toZ(p.z)
       const r = big ? 15 : 8
       if (!p.visited) {
         ctx.strokeStyle = hex(p.color)
@@ -319,8 +329,8 @@ export class Hud {
     }
 
     // jogador: seta apontando pra onde ele olha
-    const px = (player.x + EXTENT) * s
-    const pz = (player.z + EXTENT) * s
+    const px = toX(player.x)
+    const pz = toZ(player.z)
     ctx.translate(px, pz)
     ctx.rotate(-player.facing + Math.PI)
     const a = big ? 11 : 7

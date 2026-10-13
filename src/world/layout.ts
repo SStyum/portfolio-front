@@ -40,8 +40,12 @@ export function doorPoint(s: SectorDef, extra = 1.6): { x: number; z: number } {
 
 export const SPAWN = { x: 0, z: 60, yaw: 0 }
 
-// Raio máximo onde o jogador pode andar (depois disso começam os paredões)
-export const WALK_RADIUS = 71
+// Raio da vila (casas, caminhos, grama baixa). Depois dela vêm colinas e campos abertos.
+export const VILLAGE_RADIUS = 70
+// Raio do mundo: perto daqui começam as montanhas (íngremes demais pra subir)
+export const WORLD_RADIUS = 175
+// Limite duro, por segurança (as montanhas já seguram antes)
+export const WALK_RADIUS = WORLD_RADIUS + 10
 
 // Terraço norte (mais alto), separado por um muro de pedra com escada no meio
 export const TERRACE = { zStart: -27, zEnd: -31, height: 3.2, stairHalfWidth: 3.5 }
@@ -92,4 +96,17 @@ export const EXTRA_HOUSES: { x: number; z: number; rot: number; w: number; d: nu
   { x: -24, z: 40, rot: Math.PI, w: 7, d: 6 },
   { x: 22, z: 50, rot: W, w: 7, d: 6 },
   { x: -46, z: -22, rot: E, w: 7, d: 6 },
+]
+
+// Construções (setores + casas decorativas + portal) como círculos: o terreno fica plano perto delas
+export const BUILDINGS: { x: number; z: number; r: number }[] = [
+  ...SECTORS.map((s) => ({ x: s.x, z: s.z, r: Math.hypot(s.w, s.d) / 2 + 4 })),
+  ...EXTRA_HOUSES.map((h) => ({ x: h.x, z: h.z, r: Math.hypot(h.w, h.d) / 2 + 4 })),
+  { x: 0, z: 63, r: 7 },
+]
+
+// Placas de direção fixas (as dos cruzamentos e as de fora da vila são calculadas em world.ts)
+export const SIGNPOSTS: { x: number; z: number }[] = [
+  { x: 2.8, z: 58 }, // entrada, logo depois do portal
+  { x: 5.5, z: -35.5 }, // terraço
 ]

@@ -266,13 +266,15 @@ const ajuda: Renderer = (body) => {
       <kbd>Shift</kbd><span>correr</span>
       <kbd>Espaço</kbd><span>pular</span>
       <kbd>F / Clique</kbd><span>combo de espada (aperte até 3x)</span>
+      <kbd>Espaço + F</kbd><span>golpe aéreo: mortal e mergulho com a espada</span>
       <kbd>Mouse</kbd><span>girar a câmera (clique no jogo pra travar o cursor)</span>
       <kbd>Roda</kbd><span>zoom</span>
       <kbd>E</kbd><span>entrar / interagir</span>
       <kbd>M</kbd><span>mapa e viagem rápida</span>
       <kbd>Esc</kbd><span>fechar janela / soltar o cursor</span>
     </div>
-    <p class="muted">No celular: arraste o lado esquerdo para andar e o direito para girar a câmera.</p>`
+    <p class="muted">No celular: arraste o lado esquerdo para andar e o direito para girar a câmera.</p>
+    <p class="muted">A vila não tem muros: siga as placas ou saia pelos campos até as montanhas.</p>`
 }
 
 export const PANELS: Record<PanelId, Renderer> = { sobre, projetos, blog, observatorio, api, contato, ajuda }

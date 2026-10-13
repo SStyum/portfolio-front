@@ -1,21 +1,24 @@
 import * as THREE from 'three'
 import { Colliders } from './colliders'
 import { createBeam, createHouse, createKiosk, createTower } from './buildings'
-import { EXTRA_HOUSES, POND, SECTORS, TERRACE, WALK_RADIUS, distToPath, doorPoint, type SectorDef } from './layout'
+import { EXTRA_HOUSES, POND, SECTORS, SIGNPOSTS, TERRACE, VILLAGE_RADIUS, WORLD_RADIUS, distToPath, doorPoint, type SectorDef } from './layout'
 import {
   Petals,
   createCloud,
   createFlowers,
+  createForest,
   createGate,
   createGrass,
   createLantern,
-  createPine,
   createPinwheel,
   createRock,
+  createSignpost,
   createSky,
   createTree,
+  type ForestTree,
+  type SignArm,
 } from './props'
-import { createTerrain, heightAt } from './terrain'
+import { createTerrain, heightAt, noise2 } from './terrain'
 
 // PRNG com semente: a vila sai igual em toda visita
 function mulberry32(seed: number) {
@@ -205,6 +208,53 @@ export function buildWorld(scene: THREE.Scene): World {
     if (s.def.kind !== 'tower') placeLantern(side.x, side.z)
   }
 
+  // ---------- placas de direção ----------
+  const signTo = (fromX: number, fromZ: number, s: SectorDef): SignArm => {
+    const d = doorPoint(s)
+    return {
+      label: s.place,
+      detail: `${Math.round(Math.hypot(d.x - fromX, d.z - fromZ))} m`,
+      yaw: Math.atan2(d.x - fromX, d.z - fromZ),
+      color: s.color,
+    }
+  }
+  const placeSign = (x: number, z: number, arms: SignArm[]) => {
+    const sign = createSignpost(arms)
+    sign.position.set(x, heightAt(x, z), z)
+    scene.add(sign)
+    colliders.circle(x, z, 0.25)
+  }
+  const manor = SECTORS.find((s) => s.id === 'sobre')!
+  // entrada: todos os lugares
+  placeSign(SIGNPOSTS[0].x, SIGNPOSTS[0].z, SECTORS.map((s) => signTo(SIGNPOSTS[0].x, SIGNPOSTS[0].z, s)))
+  // terraço: casa principal e o caminho de volta pro portal
+  placeSign(SIGNPOSTS[1].x, SIGNPOSTS[1].z, [
+    signTo(SIGNPOSTS[1].x, SIGNPOSTS[1].z, manor),
+    { label: 'Portal da vila', detail: `${Math.round(63 - SIGNPOSTS[1].z)} m`, yaw: 0, color: 0xe8c88c },
+  ])
+  // cruzamentos: as ruas que saem dali + a casa principal ao norte
+  const junctions = new Map<number, SectorDef[]>()
+  for (const s of SECTORS.filter((x) => x.id !== 'sobre')) {
+    const z = doorPoint(s).z
+    const key = [...junctions.keys()].find((k) => Math.abs(k - z) < 6) ?? z
+    junctions.set(key, [...(junctions.get(key) ?? []), s])
+  }
+  for (const list of junctions.values()) {
+    const sz = Math.max(...list.map((s) => doorPoint(s).z)) + 2.4
+    placeSign(2.7, sz, [...list.map((s) => signTo(2.7, sz, s)), signTo(2.7, sz, manor)])
+  }
+  // lá fora: placas apontando de volta pra vila
+  for (let i = 0; i < 10; i++) {
+    const a = (i / 10) * Math.PI * 2 + 0.3
+    const r = VILLAGE_RADIUS + 22 + (i % 3) * 18
+    const x = Math.cos(a) * r
+    const z = Math.sin(a) * r
+    if (colliders.blocked(x, z, 1.2)) continue
+    placeSign(x, z, [
+      { label: 'Vila do Portfólio', detail: `${Math.round(r)} m`, yaw: Math.atan2(-x, -z), color: 0xe8c88c },
+    ])
+  }
+
   // ---------- árvores ----------
   // árvore sagrada no terraço
   const sacred = createTree('cherry', 1.9, 0.3)
@@ -213,7 +263,7 @@ export function buildWorld(scene: THREE.Scene): World {
   colliders.circle(11, -34.5, 0.8)
 
   const free = (x: number, z: number, pathMargin: number, colMargin: number) =>
-    Math.hypot(x, z) < WALK_RADIUS - 2 &&
+    Math.hypot(x, z) < VILLAGE_RADIUS - 2 &&
     distToPath(x, z) > pathMargin &&
     Math.hypot(x - POND.x, z - POND.z) > POND.r + 1.5 &&
     !colliders.blocked(x, z, colMargin) &&
@@ -221,7 +271,7 @@ export function buildWorld(scene: THREE.Scene): World {
 
   const kinds = ['cherry', 'maple', 'green', 'green', 'cherry'] as const
   let placed = 0
-  for (let tries = 0; tries < 2000 && placed < 55; tries++) {
+  for (let tries = 0; tries < 3000 && placed < 85; tries++) {
     const a = rand() * Math.PI * 2
     const r = 12 + Math.sqrt(rand()) * 56
     const x = Math.cos(a) * r
@@ -234,16 +284,34 @@ export function buildWorld(scene: THREE.Scene): World {
     placed++
   }
 
-  // pinheiros nos paredões
-  for (let i = 0; i < 140; i++) {
+  // ---------- fora da vila: bosques, árvores soltas e pinheiros nas montanhas ----------
+  const forest: ForestTree[] = []
+  const wildKinds = ['green', 'green', 'maple', 'cherry', 'pine', 'pine'] as const
+  for (let tries = 0; tries < 9000 && forest.length < 700; tries++) {
     const a = rand() * Math.PI * 2
-    const r = 78 + rand() * 40
+    const r = VILLAGE_RADIUS + 6 + rand() * (WORLD_RADIUS - VILLAGE_RADIUS - 18)
     const x = Math.cos(a) * r
     const z = Math.sin(a) * r
-    const pine = createPine(1 + rand() * 0.9, rand())
-    pine.position.set(x, heightAt(x, z) - 0.3, z)
-    scene.add(pine)
+    // bosques onde o ruído é alto, árvores soltas no resto
+    const grove = noise2(x * 0.025 + 40, z * 0.025 - 13)
+    if (rand() > (grove > 0.55 ? 0.9 : 0.07)) continue
+    if (colliders.blocked(x, z, 1.6)) continue
+    const h = heightAt(x, z)
+    const kind = h > 14 ? 'pine' : wildKinds[Math.floor(rand() * wildKinds.length)]
+    const scale = 0.8 + rand() * 0.7
+    forest.push({ x, z, kind, scale, seed: rand() })
+    colliders.circle(x, z, 0.45 * scale + 0.1)
   }
+  // pinheiros subindo as montanhas (inalcançáveis, sem colisão)
+  for (let i = 0; i < 320; i++) {
+    const a = rand() * Math.PI * 2
+    const r = WORLD_RADIUS - 20 + rand() * 45
+    const x = Math.cos(a) * r
+    const z = Math.sin(a) * r
+    if (heightAt(x, z) > 48) continue // acima da linha das árvores
+    forest.push({ x, z, kind: 'pine', scale: 1 + rand() * 0.9, seed: rand() })
+  }
+  scene.add(createForest(forest))
 
   // pedras perto da borda e do lago
   for (let i = 0; i < 30; i++) {
@@ -259,6 +327,20 @@ export function buildWorld(scene: THREE.Scene): World {
     rock.position.set(x, heightAt(x, z) + s * 0.15, z)
     scene.add(rock)
     if (s > 0.7) colliders.circle(x, z, s * 0.9)
+  }
+
+  // pedras espalhadas pelos campos
+  for (let i = 0; i < 70; i++) {
+    const a = rand() * Math.PI * 2
+    const r = VILLAGE_RADIUS + 4 + rand() * (WORLD_RADIUS - VILLAGE_RADIUS - 14)
+    const x = Math.cos(a) * r
+    const z = Math.sin(a) * r
+    if (colliders.blocked(x, z, 1.5)) continue
+    const s = 0.6 + rand() * 1.8
+    const rock = createRock(s, rand())
+    rock.position.set(x, heightAt(x, z) + s * 0.1, z)
+    scene.add(rock)
+    if (s > 0.8) colliders.circle(x, z, s * 0.85)
   }
 
   // cataventos
@@ -294,6 +376,15 @@ export function buildWorld(scene: THREE.Scene): World {
     if (Math.abs(z - (TERRACE.zStart + TERRACE.zEnd) / 2) < 2.4 && Math.abs(x) > gap) continue
     grassPts.push({ x, z })
     if (rand() < 0.2) flowerPts.push({ x: x + 0.4, z: z - 0.3 })
+  }
+  for (let tries = 0; tries < 12000 && grassPts.length < 5200; tries++) {
+    const a = rand() * Math.PI * 2
+    const r = VILLAGE_RADIUS - 2 + rand() * (WORLD_RADIUS - VILLAGE_RADIUS - 15)
+    const x = Math.cos(a) * r
+    const z = Math.sin(a) * r
+    if (colliders.blocked(x, z, 0.4)) continue
+    grassPts.push({ x, z })
+    if (rand() < 0.25) flowerPts.push({ x: x + 0.4, z: z - 0.3 })
   }
   scene.add(createGrass(grassPts, windUniforms))
   scene.add(createFlowers(flowerPts))

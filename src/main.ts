@@ -7,6 +7,8 @@ import { Hud, type Place } from './ui/hud'
 import { signBoard } from './world/buildings'
 import { SPAWN } from './world/layout'
 import { GroundMarks } from './world/marks'
+import { ImpactEffects } from './world/effects'
+import { SwordTrail } from './player/trail'
 import { heightAt } from './world/terrain'
 import { buildWorld } from './world/world'
 
@@ -97,7 +99,18 @@ function start() {
   const player = new PlayerController(camera, world.colliders)
   scene.add(player.character.root)
   const marks = new GroundMarks(scene)
+  const effects = new ImpactEffects()
+  scene.add(effects.group)
+  const trail = new SwordTrail()
+  scene.add(trail.mesh)
+  const bladeBase = new THREE.Vector3()
+  const bladeTip = new THREE.Vector3()
   player.character.onGroundMark = (m) => marks.add(m)
+  player.character.onImpact = (hit) => {
+    effects.burst(hit.x, hit.y, hit.z, hit.strength)
+    player.shake(hit.strength * (hit.crater ? 0.9 : 0.45))
+    if (hit.crater) marks.crater(hit.x, hit.z, 1.6)
+  }
 
   // placa "Como jogar" perto da entrada
   const helpPos = { x: 4.8, z: 60 }
@@ -235,6 +248,9 @@ function start() {
 
     world.update(dt, t, pos)
     marks.update(dt)
+    effects.update(dt)
+    player.character.bladeSegment(bladeBase, bladeTip)
+    trail.update(dt, bladeBase, bladeTip, player.character.trailActive)
     hud.update({ x: pos.x, z: pos.z, facing: player.facingAngle }, t)
     renderer.render(scene, camera)
     input.endFrame()
